@@ -21,3 +21,7 @@ def show_understood_analysis(analysis) -> None:
 
 def show_draft_reply(text: str) -> None:
     console.print(Panel.fit(text, title="Draft reply", style="green"))
+
+
+def show_error(message: str) -> None:
+    console.print(Panel.fit(message, title="Not sent", style="red"))
