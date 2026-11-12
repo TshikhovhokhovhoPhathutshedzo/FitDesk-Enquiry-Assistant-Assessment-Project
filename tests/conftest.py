@@ -10,10 +10,8 @@ if str(SRC) not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def isolate_status_log():
-    log_path = ROOT / "status_log.json"
-    if log_path.exists():
-        log_path.unlink()
-    yield
-    if log_path.exists():
-        log_path.unlink()
+def isolate_status_log(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "fitdesk.status_log.LOG_FILE",
+        tmp_path / "status_log.json",
+    )
