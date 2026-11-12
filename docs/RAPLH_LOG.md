@@ -16,6 +16,27 @@
 - What was corrected: Added the src path to sys.path for pytest, tightened package matching to avoid false positives like “25 sessions” matching “5 sessions”, and fixed the log-writing test to stub the Gemini result properly.
 - Approval decision: Proceeded because the suite passed.
 
+### [GENUINE] 2026-11-12 — Finalize failure handling and verify clean installation
+- Task/expectation: Audit and finish the project, cover failure paths, verify a fresh requirements-only install, and prepare the final changes for review.
+- Summary of prompt/instruction: The finalisation brief required structured Gemini output, deterministic facts, explicit failures, offline tests, a repository audit, and a final push.
+- Files changed: .gitignore, README.md, docs/SRS.md, docs/REGRESSION_TESTS.md, docs/RAPLH_LOG.md, pyproject.toml, requirements.txt, src/fitdesk/approval.py, src/fitdesk/cli.py, src/fitdesk/gemini_client.py, src/fitdesk/lookup.py, src/fitdesk/models.py, src/fitdesk/status_log.py, src/fitdesk/ui.py, tests/test_cli.py
+- Test run and result: Fresh environment created and installed from requirements.txt. With GEMINI_API_KEY unset, `.venv-validation\Scripts\python.exe -m pytest -v` completed with `36 passed in 7.56s`. A no-key CLI smoke run returned exit 1, displayed a friendly error, and recorded failed_ai_service; no live Gemini run was made because .env is absent.
+- What was corrected: Added schema-constrained Gemini output and actual HTTP timeout configuration; tightened customer-text-bound lookup, unknown day/time handling, and number-word matching; made data/log failures non-sent; added cross-process log locking and CLI cancellation/empty-input handling.
+- Approval decision: Human review is pending. No email was sent and the repository rename is pending GitHub CLI access.
+
+## Bug-hunt table
+
+| ID | Description | Root cause | Fix | Regression evidence |
+|---|---|---|---|---|
+| B-01 | A model could return a known package the customer did not request | Lookup trusted model package names | Resolve requested packages from customer text before using approved data | `test_model_cannot_substitute_a_known_package_not_requested` |
+| B-02 | Sunday 09:00 could be described as Saturday 09:00 | Time lookup did not require a Saturday context | Only use Saturday availability when Saturday is asked about; escalate unsupported days/times | `test_sunday_time_does_not_claim_saturday_availability` |
+| B-03 | Missing/corrupt price data could crash the CLI | File/JSON errors escaped lookup | Validate data structure and return failed_data | `test_missing_data_file_fails_without_sending`, `test_corrupt_data_file_fails_without_sending` |
+| B-04 | Corrupt status log could be silently overwritten | Invalid JSON was treated as an empty log | Fail closed and preserve the original corrupt file | `test_corrupt_status_log_never_records_sent_or_crashes` |
+| B-05 | Concurrent writers could overwrite one another | Read/modify/write had no process lock | Lock around read and atomic replace | `test_concurrent_status_log_appends_are_not_lost` |
+| B-06 | Empty CLI invocation did not offer interactive input or log rejection | CLI returned early before the normal pipeline | Add interactive input and failed_empty_input handling | `test_empty_interactive_input_is_rejected` |
+| B-07 | SDK call had no actual structured schema or effective timeout | Timeout was passed in the wrong request field and JSON mode was absent | Use Pydantic response_schema and HttpOptions timeout in milliseconds | `test_gemini_request_uses_structured_schema_and_timeout` |
+| B-08 | Unexpected availability values could be described as “full”; invalid UTF-8 could crash file reads | Lookup accepted arbitrary status strings and omitted UnicodeDecodeError handling | Validate statuses against Available/Full and fail closed on invalid encoding | `test_undocumented_availability_status_fails_without_sending`, `test_non_utf8_data_file_fails_without_sending`, `test_non_utf8_status_log_never_records_sent_or_crashes` |
+
 ### Closing answers
 1. How would you stop an AI coding agent from changing unrelated files or exposing an API key?
    - Keep the repo scoped to the project folder and use .gitignore to block .env, .venv, __pycache__, pytest cache, and runtime log data.

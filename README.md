@@ -8,14 +8,14 @@ Setup
 2. Create a virtual environment:
    python -m venv .venv
    .\.venv\Scripts\activate
-3. Install dependencies:
+3. Install the project and its dependencies:
    pip install -r requirements.txt
-   pip install -e .
 4. Copy .env.example to .env and fill in your free Gemini key.
 5. Get a free API key from https://aistudio.google.com/. Keep the key in .env and never commit it.
 
-Run command
+Run command (provide a message as an argument or omit it for an interactive prompt)
 python -m fitdesk "How much is the 12-session pack and do you have Saturday slots?"
+python -m fitdesk
 
 Test command
 pytest
@@ -23,6 +23,9 @@ No API key is needed for pytest because the Gemini layer is mocked in the tests.
 
 Project structure and design principle
 The project follows a deterministic pipeline: the LLM only understands the customer message, while code reads approved data and writes the response. That prevents invented prices and fake availability claims.
+- `data/fitdesk_data.json` contains the approved sample facts.
+- `src/fitdesk/` contains the Gemini client, Pydantic schema, lookup, drafter, approval gate, CLI/UI, and atomic status log.
+- `tests/` contains offline mocked regression and failure-path tests; `docs/` contains the SRS and evidence logs.
 
 AI use
 - Gemini docs and API examples were checked from Google AI Studio / docs to confirm the official Python SDK and structured-output flow.
@@ -34,4 +37,5 @@ What doesn't work yet
 - Availability is read from the local JSON file only; there is no real-time studio availability refresh.
 - Model output edge cases are still handled conservatively, and any missing fact triggers the owner-check escalation phrase.
 
-<!-- TO BE WRITTEN BY ME, BY HAND, WITHOUT AI: 4 answers of 80–150 words each -->
+## Working style
+<!-- TO BE WRITTEN BY ME, BY HAND, WITHOUT AI: 4 answers, 80–150 words each -->

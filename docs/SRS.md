@@ -45,6 +45,6 @@
 - Given a valid draft and staff input y, when approval is accepted, then the status is sent.
 
 ## Ambiguities and assumptions
-- [ASSUMPTION] The studio expects only pricing and Saturday slot questions, not wider class schedules.
-- [ASSUMPTION] “Single session” and “5 sessions” are treated as exact package names with approved pricing values from the data file.
-- [ASSUMPTION] Any missing fact should trigger owner escalation rather than a guess.
+- What is unclear: whether enquiries about other weekdays or class schedules should be answered. What I'd ask the owner: “Should the assistant handle class schedules beyond Saturday availability?” [ASSUMPTION] Until data is added, those questions escalate to the owner.
+- What is unclear: whether package names have customer-facing aliases. What I'd ask the owner: “Are there approved alternative names for single, 5-session, and 12-session packages?” [ASSUMPTION] Only names and values in the data file are treated as approved.
+- What is unclear: what to say when a request mixes supported and unsupported facts. What I'd ask the owner: “Should we include the known part and escalate the unknown part?” [ASSUMPTION] The assistant includes known facts and adds the exact escalation phrase for missing facts.
