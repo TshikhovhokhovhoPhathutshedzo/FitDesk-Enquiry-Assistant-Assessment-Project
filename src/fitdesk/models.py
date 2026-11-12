@@ -14,7 +14,7 @@ class EnquiryAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     intent: Intent
-    details: str = Field(default="")
+    details: str
     packages: list[str] = Field(default_factory=list)
     saturday_times: list[str] = Field(default_factory=list)
-    requires_human_approval: bool = True
+    requires_human_approval: bool
