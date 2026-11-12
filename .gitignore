@@ -1,6 +1,8 @@
 .env
 .venv/
+.venv-validation/
 __pycache__/
 .pytest_cache/
 status_log.json
+status_log.json.lock
 src/*.egg-info/
