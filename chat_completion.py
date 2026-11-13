@@ -25,3 +25,4 @@ Commit #23 | Meme: Hide and seek champion since 1958: ';' in C/C++
 Commit #24 | Meme: git commit -m 'fixed stuff' (narrator: it was not fixed)
 Commit #25 | Meme: A SQL query walks into a bar, walks up to two tables and asks: 'Can I join you?'
 Commit #26 | Meme: Hide and seek champion since 1958: ';' in C/C++
+Commit #27 | Meme: My code doesn't work, I have no idea why. My code works, I have no idea why.
