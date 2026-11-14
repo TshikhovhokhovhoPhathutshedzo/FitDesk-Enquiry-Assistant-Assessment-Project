@@ -11,3 +11,4 @@ Commit #9 | Meme: Deleting code is better than writing code.
 Commit #10 | Meme: To understand recursion, you must first understand recursion.
 Commit #11 | Meme: A QA engineer walks into a bar. Orders a beer. Orders 0 beers. Orders 999999999 beers. Orders a lizard.
 Commit #12 | Meme: 99 little bugs in the code. Take one down, patch it around. 127 little bugs in the code.
+Commit #13 | Meme: There are 10 types of people: those who understand binary, and those who don't.
