@@ -16,3 +16,4 @@ Commit #14 | Meme: Hide and seek champion since 1958: ';' in C/C++
 Commit #15 | Meme: To understand recursion, you must first understand recursion.
 Commit #16 | Meme: Hide and seek champion since 1958: ';' in C/C++
 Commit #17 | Meme: 99 little bugs in the code. Take one down, patch it around. 127 little bugs in the code.
+Commit #18 | Meme: 99 little bugs in the code. Take one down, patch it around. 127 little bugs in the code.
