@@ -37,3 +37,4 @@ Commit #35 | Meme: There's no place like 127.0.0.1
 Commit #36 | Meme: Programming is 10% writing code and 90% understanding why it's not working.
 Commit #37 | Meme: git commit -m 'fixed stuff' (narrator: it was not fixed)
 Commit #38 | Meme: Software and cathedrals are much the same – first we build them, then we pray.
+Commit #39 | Meme: It's not a bug, it's an undocumented feature.
