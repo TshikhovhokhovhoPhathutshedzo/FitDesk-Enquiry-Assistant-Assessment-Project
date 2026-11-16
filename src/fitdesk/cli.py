@@ -2,8 +2,9 @@ import json
 import sys
 
 from .approval import ApprovalCancelled, get_staff_decision
+from .ai_client import analyze_enquiry
 from .drafter import draft_reply
-from .gemini_client import AIServiceError, InvalidJSONError, analyze_enquiry
+from .gemini_client import AIServiceError, InvalidJSONError
 from .lookup import DataFileError, extract_known_facts
 from .status_log import StatusLogError, append_status_entry
 from .ui import show_customer_message, show_draft_reply, show_error, show_understood_analysis

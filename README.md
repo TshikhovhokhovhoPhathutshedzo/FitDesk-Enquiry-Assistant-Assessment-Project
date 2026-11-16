@@ -10,8 +10,11 @@ Setup
    .\.venv\Scripts\activate
 3. Install the project and its dependencies:
    pip install -r requirements.txt
-4. Copy .env.example to .env and fill in your free Gemini key.
-5. Get a free API key from https://aistudio.google.com/. Keep the key in .env and never commit it.
+4. Copy .env.example to .env.
+5. Set `AI_PROVIDER` to `gemini` or `deepseek`, then add the matching API key:
+   - Gemini: set `GEMINI_API_KEY` and get a key from https://aistudio.google.com/.
+   - DeepSeek: set `DEEPSEEK_API_KEY` from your DeepSeek account.
+   Keep credentials only in `.env`; never commit them. Gemini is the default provider.
 
 Run command (provide a message as an argument or omit it for an interactive prompt)
 python -m fitdesk "How much is the 12-session pack and do you have Saturday slots?"
@@ -19,16 +22,16 @@ python -m fitdesk
 
 Test command
 pytest
-No API key is needed for pytest because the Gemini layer is mocked in the tests.
+No API key is needed for pytest because both provider layers are mocked in tests.
 
 Project structure and design principle
 The project follows a deterministic pipeline: the LLM only understands the customer message, while code reads approved data and writes the response. That prevents invented prices and fake availability claims.
 - `data/fitdesk_data.json` contains the approved sample facts.
-- `src/fitdesk/` contains the Gemini client, Pydantic schema, lookup, drafter, approval gate, CLI/UI, and atomic status log.
+- `src/fitdesk/` contains selectable Gemini and DeepSeek clients, the Pydantic schema, lookup, drafter, approval gate, CLI/UI, and atomic status log.
 - `tests/` contains offline mocked regression and failure-path tests; `docs/` contains the SRS and evidence logs.
 
 AI use
-- Gemini docs and API examples were checked from Google AI Studio / docs to confirm the official Python SDK and structured-output flow.
+- Gemini and DeepSeek API documentation were checked to confirm each provider's JSON response mode and request format.
 - The Copilot AI assistant in this session helped implement the project structure, tests, and validation steps.
 
 What doesn't work yet
