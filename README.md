@@ -11,9 +11,10 @@ Setup
 3. Install the project and its dependencies:
    pip install -r requirements.txt
 4. Copy .env.example to .env.
-5. Set `AI_PROVIDER` to `gemini` or `deepseek`, then add the matching API key:
+5. Set `AI_PROVIDER` to `gemini`, `deepseek`, or `openrouter`, then add the matching API key:
    - Gemini: set `GEMINI_API_KEY` and get a key from https://aistudio.google.com/.
    - DeepSeek: set `DEEPSEEK_API_KEY` from your DeepSeek account.
+   - OpenRouter: set `OPENROUTER_API_KEY` from https://openrouter.ai/keys.
    Keep credentials only in `.env`; never commit them. Gemini is the default provider.
 
 Run command (provide a message as an argument or omit it for an interactive prompt)
@@ -27,11 +28,11 @@ No API key is needed for pytest because both provider layers are mocked in tests
 Project structure and design principle
 The project follows a deterministic pipeline: the LLM only understands the customer message, while code reads approved data and writes the response. That prevents invented prices and fake availability claims.
 - `data/fitdesk_data.json` contains the approved sample facts.
-- `src/fitdesk/` contains selectable Gemini and DeepSeek clients, the Pydantic schema, lookup, drafter, approval gate, CLI/UI, and atomic status log.
+- `src/fitdesk/` contains selectable Gemini, DeepSeek, and OpenRouter clients, the Pydantic schema, lookup, drafter, approval gate, CLI/UI, and atomic status log.
 - `tests/` contains offline mocked regression and failure-path tests; `docs/` contains the SRS and evidence logs.
 
 AI use
-- Gemini and DeepSeek API documentation were checked to confirm each provider's JSON response mode and request format.
+- Gemini, DeepSeek, and OpenRouter API documentation were checked to confirm each provider's JSON response mode and request format.
 - The Copilot AI assistant in this session helped implement the project structure, tests, and validation steps.
 
 What doesn't work yet
