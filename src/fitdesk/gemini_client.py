@@ -22,6 +22,30 @@ class SchemaValidationError(InvalidJSONError):
     pass
 
 
+def _gemini_response_schema() -> dict:
+    model_schema = EnquiryAnalysis.model_json_schema()
+    return {
+        "type": "object",
+        "properties": {
+            "intent": {
+                "type": "string",
+                "enum": model_schema["$defs"]["Intent"]["enum"],
+            },
+            "details": {"type": "string"},
+            "packages": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "saturday_times": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "requires_human_approval": {"type": "boolean"},
+        },
+        "required": model_schema["required"],
+    }
+
+
 def analyze_enquiry(message: str) -> EnquiryAnalysis:
     if not GEMINI_API_KEY:
         raise AIServiceError("Gemini API key is missing. Add it to .env.")
@@ -46,7 +70,7 @@ def analyze_enquiry(message: str) -> EnquiryAnalysis:
             config=types.GenerateContentConfig(
                 temperature=0.1,
                 response_mime_type="application/json",
-                response_schema=EnquiryAnalysis,
+                response_json_schema=_gemini_response_schema(),
             ),
         )
     except (APIError, httpx2.HTTPError, TimeoutError, OSError) as exc:  # pragma: no cover - real service branch

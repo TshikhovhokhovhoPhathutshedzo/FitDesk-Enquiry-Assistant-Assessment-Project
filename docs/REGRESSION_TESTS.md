@@ -32,7 +32,8 @@
 
 ## Real pytest run
 Fresh venv command: `.venv-validation\Scripts\python.exe -m pytest -v`
-The run had `GEMINI_API_KEY` explicitly unset and made no network requests:
+Final offline run had `GEMINI_API_KEY` explicitly unset and made no network requests:
 ```
-============================= 36 passed in 7.56s =============================
+============================= 36 passed in 6.85s =============================
 ```
+Live Gemini check: attempted after the schema compatibility fix, but the API returned HTTP 403 `PERMISSION_DENIED` and reported the local key as leaked. No live answer was generated.

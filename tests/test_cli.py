@@ -359,7 +359,16 @@ def test_gemini_request_uses_structured_schema_and_timeout(monkeypatch):
     assert calls["client"]["http_options"].timeout == 20_000
     config = calls["request"]["config"]
     assert config.response_mime_type == "application/json"
-    assert config.response_schema is EnquiryAnalysis
+    schema = config.response_json_schema
+    assert schema["type"] == "object"
+    assert schema["properties"]["intent"]["enum"] == [
+        "pricing",
+        "availability",
+        "pricing_and_availability",
+        "other",
+    ]
+    assert "additionalProperties" not in schema
+    assert "$defs" not in schema
 
 
 @pytest.mark.parametrize(
