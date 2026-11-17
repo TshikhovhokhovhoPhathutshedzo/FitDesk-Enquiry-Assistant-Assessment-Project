@@ -28,7 +28,11 @@ No API key is needed for pytest because both provider layers are mocked in tests
 Project structure and design principle
 The project follows a deterministic pipeline: the LLM only understands the customer message, while code reads approved data and writes the response. That prevents invented prices and fake availability claims.
 - `data/fitdesk_data.json` contains the approved sample facts.
-- `src/fitdesk/` contains selectable Gemini, DeepSeek, and OpenRouter clients, the Pydantic schema, lookup, drafter, approval gate, CLI/UI, and atomic status log.
+- `src/fitdesk/cli.py` runs the workflow: classify the enquiry, look up approved facts, draft a reply, ask staff to approve it, and record the result.
+- `src/fitdesk/ai_client.py` selects Gemini, DeepSeek, or OpenRouter from `AI_PROVIDER`. `gemini_client.py` handles Gemini; DeepSeek and OpenRouter use the shared `chat_completion.py` request and validation code.
+- `src/fitdesk/lookup.py` checks model-extracted requests against the approved JSON data; `drafter.py` builds replies only from those facts.
+- `src/fitdesk/approval.py`, `ui.py`, and `status_log.py` handle staff confirmation, terminal display, and safe status logging.
+- `src/fitdesk/models.py` defines the validated analysis structure.
 - `tests/` contains offline mocked regression and failure-path tests; `docs/` contains the SRS and evidence logs.
 
 AI use

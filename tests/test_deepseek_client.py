@@ -4,7 +4,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from fitdesk import ai_client, deepseek_client
+from fitdesk import ai_client, chat_completion, deepseek_client
 from fitdesk.gemini_client import AIServiceError, InvalidJSONError, SchemaValidationError
 from fitdesk.models import Intent
 
@@ -48,7 +48,7 @@ def test_deepseek_request_uses_json_mode_and_validates_response(monkeypatch):
     monkeypatch.setattr(deepseek_client, "DEEPSEEK_API_KEY", "test-key")
     monkeypatch.setattr(deepseek_client, "DEEPSEEK_MODEL", "deepseek-test")
     monkeypatch.setattr(deepseek_client, "REQUEST_TIMEOUT_SECONDS", 17)
-    monkeypatch.setattr(deepseek_client, "urlopen", fake_urlopen)
+    monkeypatch.setattr(chat_completion, "urlopen", fake_urlopen)
 
     result = deepseek_client.analyze_enquiry("How much is 12 sessions?")
 
@@ -82,7 +82,7 @@ def test_deepseek_http_errors_become_service_errors(monkeypatch):
         )
 
     monkeypatch.setattr(deepseek_client, "DEEPSEEK_API_KEY", "test-key")
-    monkeypatch.setattr(deepseek_client, "urlopen", fail)
+    monkeypatch.setattr(chat_completion, "urlopen", fail)
     with pytest.raises(AIServiceError, match="HTTP 429"):
         deepseek_client.analyze_enquiry("hello")
 
@@ -107,7 +107,7 @@ def test_deepseek_invalid_response_fails_closed(monkeypatch, response, error_typ
             self.payload = response
 
     monkeypatch.setattr(deepseek_client, "DEEPSEEK_API_KEY", "test-key")
-    monkeypatch.setattr(deepseek_client, "urlopen", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(chat_completion, "urlopen", lambda *args, **kwargs: FakeResponse())
     with pytest.raises(error_type):
         deepseek_client.analyze_enquiry("hello")
 

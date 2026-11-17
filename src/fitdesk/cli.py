@@ -1,3 +1,5 @@
+"""Run the enquiry pipeline: classify, verify facts, draft, approve, and log."""
+
 import json
 import sys
 
