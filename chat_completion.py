@@ -22,3 +22,4 @@ Commit #20 | Meme: There are 10 types of people: those who understand binary, an
 Commit #21 | Meme: Software and cathedrals are much the same – first we build them, then we pray.
 Commit #22 | Meme: Why do Java developers wear glasses? Because they don't C#.
 Commit #23 | Meme: Hide and seek champion since 1958: ';' in C/C++
+Commit #24 | Meme: git commit -m 'fixed stuff' (narrator: it was not fixed)
