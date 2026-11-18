@@ -146,7 +146,7 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 | `drafter.py` | Builds the reply from verified facts and adds the standard owner-check phrase when information is unknown. |
 | `approval.py` | Keeps the staff approval prompt in a focused module and handles cancellation and invalid responses. |
 | `ui.py` | Displays customer input, analysis, draft, and errors in the terminal using Rich panels. |
-| `status_log.py` | Appends outcomes to `status_log.json` with locking and atomic file replacement so concurrent writes do not silently overwrite one another. |
+| `status_log.py` | Appends outcomes to `status_log.json` with locking and atomic file replacement so concurrent writes do not silently overwrite one another. Enquiry entries include the selected `ai_provider` and `ai_model` (not the secret key). |
 | `__init__.py` | Marks `fitdesk` as a Python package and exposes its version. |
 
 ### Data, tests, and documentation
@@ -162,6 +162,7 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 | `docs/SRS.md` | Records the software requirements, scope, stakeholders, and acceptance criteria. |
 | `docs/REGRESSION_TESTS.md` | Describes the regression-test cases and previously recorded test evidence. |
 | `docs/RAPLH_LOG.md` | Keeps the project's work and bug-fix log. |
+| `docs/PROJECT_REPORT.md` | Gives new readers an end-to-end project, test, provider, and status-log report, including known failures and fixes. |
 
 ### Root-level files
 

@@ -1,5 +1,12 @@
 # RAPLH log
 
+### [GENUINE] 2026-11-18 — Record provider/model in enquiry status and document project evidence
+- Task/expectation: Make AI failures attributable to a provider/model and produce a reader-friendly report from code, tests, and available local status-log evidence.
+- Files changed: src/fitdesk/ai_client.py, src/fitdesk/cli.py, tests/test_cli.py, README.md, docs/SRS.md, docs/REGRESSION_TESTS.md, docs/PROJECT_REPORT.md.
+- Test run and result: `.venv-validation\Scripts\python.exe -m pytest -q` completed with `60 passed in 6.56s`; `compileall` succeeded.
+- What was corrected: New status entries include non-secret `ai_provider` and `ai_model` fields. Existing log entries were not rewritten because their model identity cannot be recovered reliably. Added a project report documenting historical counts, provider errors, verified Groq outcome, test coverage, limitations, and fixes.
+- Approval decision: No live requests were made for this documentation and logging update. API keys remain local and are not logged.
+
 ### [GENUINE] 2026-11-12 — Project scaffold and remote setup
 - Task/expectation: Initialize the repo, create the required bootstrap files, and confirm the remote repo before code changes.
 - Summary of prompt/instruction: “Set up the project with .gitignore, .env.example, requirements.txt, then push the initial scaffold.”

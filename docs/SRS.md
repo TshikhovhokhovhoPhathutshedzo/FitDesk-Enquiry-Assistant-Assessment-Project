@@ -21,6 +21,7 @@
 - FR-05: The status log must record sent, rejected_by_staff, failed_invalid_json, failed_ai_service, and similar states without losing prior entries.
 - FR-06: The clerk must never record a sent status when the AI service fails, JSON is invalid, or the answer is unapproved.
 - FR-07: Partial answers must combine known facts with the escalation phrase when a fact is missing, and the record must be flagged as escalation.
+- FR-08: Each enquiry that attempts an AI request must log the selected provider and configured model name, without logging the API key.
 
 ## Non-functional requirements
 - NFR-01 Security: .env holds the selected AI provider's API key, and secret scanning checks stop accidental commit leaks.

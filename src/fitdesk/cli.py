@@ -4,7 +4,7 @@ import json
 import sys
 
 from .approval import ApprovalCancelled, get_staff_decision
-from .ai_client import analyze_enquiry
+from .ai_client import analyze_enquiry, get_provider_metadata
 from .drafter import draft_reply
 from .gemini_client import AIServiceError, InvalidJSONError
 from .lookup import DataFileError, extract_known_facts
@@ -12,9 +12,9 @@ from .status_log import StatusLogError, append_status_entry
 from .ui import show_customer_message, show_draft_reply, show_error, show_understood_analysis
 
 
-def _record_result(entry: dict, result: dict) -> dict:
+def _record_result(entry: dict, result: dict, ai_metadata: dict | None = None) -> dict:
     try:
-        append_status_entry(entry)
+        append_status_entry({**(ai_metadata or {}), **entry})
     except (OSError, StatusLogError) as exc:
         print(f"Could not record enquiry status: {exc}")
         return {
@@ -25,7 +25,12 @@ def _record_result(entry: dict, result: dict) -> dict:
     return result
 
 
-def _failure_result(message: str, status: str, reason: str) -> dict:
+def _failure_result(
+    message: str,
+    status: str,
+    reason: str,
+    ai_metadata: dict | None = None,
+) -> dict:
     return _record_result(
         {
             "original_message": message,
@@ -36,6 +41,7 @@ def _failure_result(message: str, status: str, reason: str) -> dict:
             "reason": reason,
         },
         {"status": status, "draft": "", "escalation": False},
+        ai_metadata,
     )
 
 
@@ -45,26 +51,33 @@ def process_enquiry(message: str, staff_decision_func=get_staff_decision):
         return _failure_result("", "failed_empty_input", "Customer message was empty.")
 
     show_customer_message(message)
+    ai_metadata = get_provider_metadata()
 
     try:
         analysis = analyze_enquiry(message)
     except KeyboardInterrupt:
-        return _failure_result(message, "failed_cancelled", "Enquiry processing was cancelled.")
+        return _failure_result(
+            message,
+            "failed_cancelled",
+            "Enquiry processing was cancelled.",
+            ai_metadata,
+        )
     except InvalidJSONError as exc:
-        return _failure_result(message, "failed_invalid_json", str(exc))
+        return _failure_result(message, "failed_invalid_json", str(exc), ai_metadata)
     except AIServiceError as exc:
-        return _failure_result(message, "failed_ai_service", str(exc))
+        return _failure_result(message, "failed_ai_service", str(exc), ai_metadata)
 
     show_understood_analysis(analysis)
     try:
         facts = extract_known_facts(analysis, message)
     except DataFileError as exc:
-        return _failure_result(message, "failed_data", str(exc))
+        return _failure_result(message, "failed_data", str(exc), ai_metadata)
     except (OSError, json.JSONDecodeError) as exc:
         return _failure_result(
             message,
             "failed_data",
             f"Could not read approved FitDesk data: {exc}",
+            ai_metadata,
         )
 
     draft_text, escalation = draft_reply(analysis, facts)
@@ -83,6 +96,7 @@ def process_enquiry(message: str, staff_decision_func=get_staff_decision):
                 "reason": "Staff approval was cancelled.",
             },
             {"status": "failed_cancelled", "draft": draft_text, "escalation": escalation},
+            ai_metadata,
         )
 
     if decision == "n":
@@ -105,6 +119,7 @@ def process_enquiry(message: str, staff_decision_func=get_staff_decision):
             "reason": reason,
         },
         {"status": status, "draft": draft_text, "escalation": escalation},
+        ai_metadata,
     )
 
 
