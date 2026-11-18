@@ -18,3 +18,4 @@ Commit #16 | Meme: Hide and seek champion since 1958: ';' in C/C++
 Commit #17 | Meme: 99 little bugs in the code. Take one down, patch it around. 127 little bugs in the code.
 Commit #18 | Meme: 99 little bugs in the code. Take one down, patch it around. 127 little bugs in the code.
 Commit #19 | Meme: Works on my machine! ¯\_(ツ)_/¯
+Commit #20 | Meme: There are 10 types of people: those who understand binary, and those who don't.
