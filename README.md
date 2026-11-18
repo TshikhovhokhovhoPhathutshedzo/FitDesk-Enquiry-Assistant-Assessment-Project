@@ -31,12 +31,12 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and set `AI_PROVIDER` to the provider you want to use: `gemini`, `deepseek`, or `openrouter`. Add that provider's key and, if needed, change its model setting. For example, to use OpenRouter:
+Edit `.env` and set `AI_PROVIDER` to the provider you want to use: `gemini`, `deepseek`, `openrouter`, or `groq`. Add that provider's key and, if needed, change its model setting. For example, to use Groq:
 
 ```dotenv
-AI_PROVIDER=openrouter
-OPENROUTER_API_KEY=your_openrouter_key
-OPENROUTER_MODEL=openai/gpt-4o
+AI_PROVIDER=groq
+GROQ_API_KEY=your_groq_key
+GROQ_MODEL=openai/gpt-oss-20b
 REQUEST_TIMEOUT_SECONDS=20
 ```
 
@@ -47,10 +47,11 @@ Other provider settings are:
 | Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `gemini-3.8-flash` |
 | DeepSeek | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | `deepseek-flash` |
 | OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `openai/gpt-4o` |
+| Groq | `GROQ_API_KEY`, `GROQ_MODEL` | `openai/gpt-oss-20b` |
 
 `AI_PROVIDER` defaults to `gemini` if it is omitted. Only the key for the selected provider is needed. Keep real credentials in `.env`; do not put them in `.env.example`, source files, screenshots, or commits. The `.env` file is ignored by Git.
 
-Get provider keys from [Google AI Studio](https://aistudio.google.com/), [DeepSeek](https://platform.deepseek.com/api_keys), or [OpenRouter](https://openrouter.ai/keys). Check each provider's current pricing and account requirements; API access may require available credits.
+Get provider keys from [Google AI Studio](https://aistudio.google.com/), [DeepSeek](https://platform.deepseek.com/api_keys), [OpenRouter](https://openrouter.ai/keys), or [Groq](https://console.groq.com/keys). Check each provider's current pricing and account requirements; API access may require available credits.
 
 ## Run the application
 
@@ -106,6 +107,7 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 │       ├── deepseek_client.py
 │       ├── drafter.py
 │       ├── gemini_client.py
+│       ├── groq_client.py
 │       ├── lookup.py
 │       ├── models.py
 │       ├── openrouter_client.py
@@ -115,6 +117,7 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 │   ├── conftest.py
 │   ├── test_cli.py
 │   ├── test_deepseek_client.py
+│   ├── test_groq_client.py
 │   └── test_openrouter_client.py
 ├── .env.example
 ├── .gitignore
@@ -136,7 +139,8 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 | `gemini_client.py` | Sends Gemini requests using its structured JSON response schema, handles service errors, and validates returned analysis. |
 | `deepseek_client.py` | Supplies DeepSeek's endpoint and configuration to the shared chat-completion implementation. |
 | `openrouter_client.py` | Supplies OpenRouter's endpoint and configuration to the shared chat-completion implementation. |
-| `chat_completion.py` | Shares the JSON-mode HTTP request, error handling, and response validation used by DeepSeek and OpenRouter, avoiding duplicated code. |
+| `groq_client.py` | Supplies Groq's endpoint and configuration to the shared chat-completion implementation. |
+| `chat_completion.py` | Shares the JSON-mode HTTP request, error handling, and response validation used by DeepSeek, OpenRouter, and Groq, avoiding duplicated code. |
 | `models.py` | Defines the allowed enquiry intents and the Pydantic `EnquiryAnalysis` model. Validation prevents unexpected AI output from flowing into later steps. |
 | `lookup.py` | Loads and validates approved studio data, checks what the customer actually requested, and returns matching facts. This is the boundary that prevents the model from inventing or substituting prices and availability. |
 | `drafter.py` | Builds the reply from verified facts and adds the standard owner-check phrase when information is unknown. |
@@ -153,6 +157,7 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 | `tests/conftest.py` | Adds the `src` directory to the test import path and redirects status logs to a temporary directory, keeping tests isolated from real runtime data. |
 | `tests/test_cli.py` | Exercises the application workflow, including approved facts, unsupported requests, approval decisions, and failure cases. |
 | `tests/test_deepseek_client.py` | Checks DeepSeek request construction, provider routing, JSON parsing, and service failures using mocked HTTP responses. |
+| `tests/test_groq_client.py` | Checks Groq request construction, provider routing, JSON parsing, and service failures using mocked HTTP responses. |
 | `tests/test_openrouter_client.py` | Checks the equivalent OpenRouter integration and failure handling without making real API calls. |
 | `docs/SRS.md` | Records the software requirements, scope, stakeholders, and acceptance criteria. |
 | `docs/REGRESSION_TESTS.md` | Describes the regression-test cases and previously recorded test evidence. |

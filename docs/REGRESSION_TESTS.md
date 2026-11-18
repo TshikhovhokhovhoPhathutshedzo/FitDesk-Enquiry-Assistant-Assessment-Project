@@ -29,11 +29,12 @@
 | RT-25 | FR-02, FR-03 | Availability value is not Available or Full | Supply status “Maybe” in test data | Fail closed; do not convert it to full or available | Passed in final `pytest -v` run | Pass |
 | RT-26 | FR-06 | Approved data contains invalid UTF-8 | Write invalid UTF-8 bytes to the data file | Log failed_data, never sent | Passed in final `pytest -v` run | Pass |
 | RT-27 | FR-05, FR-06 | Status log contains invalid UTF-8 | Write invalid UTF-8 bytes to the log | Fail closed and preserve the original file | Passed in final `pytest -v` run | Pass |
+| RT-28 | FR-06 | Groq chat-completions provider | Mock Groq JSON-mode response and service errors | Validate the request, parse a valid response, and fail closed on errors | Passed in final `pytest -v` run | Pass |
 
 ## Real pytest run
 Fresh venv command: `.venv-validation\Scripts\python.exe -m pytest -v`
-Final offline run had `GEMINI_API_KEY` explicitly unset and made no network requests:
+Latest offline run used mocked AI providers and made no network requests:
 ```
-============================= 36 passed in 6.85s =============================
+============================= 59 passed in 8.46s =============================
 ```
-Live Gemini check: attempted after the schema compatibility fix, but the API returned HTTP 403 `PERMISSION_DENIED` and reported the local key as leaked. No live answer was generated.
+Live Groq check: the application received a valid structured classification, looked up the approved price and availability, and displayed a draft. Staff rejected the draft, so it was recorded as not sent.

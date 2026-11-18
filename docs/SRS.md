@@ -23,7 +23,7 @@
 - FR-07: Partial answers must combine known facts with the escalation phrase when a fact is missing, and the record must be flagged as escalation.
 
 ## Non-functional requirements
-- NFR-01 Security: .env holds the Gemini API key and secret scanning checks stop accidental commit leaks.
+- NFR-01 Security: .env holds the selected AI provider's API key, and secret scanning checks stop accidental commit leaks.
 - NFR-02 Reliability: failed AI calls, malformed output, and timeouts fail closed and leave a non-sent log entry.
 - NFR-03 Cost and simplicity: the project keeps a single data source and deterministic templates to reduce model cost and keep behaviour explainable.
 
@@ -40,7 +40,7 @@
 - Given a question about a known package, when the data exists, then the system replies with the approved price and no invented value.
 - Given a question about a package not in the data file, when the package is unknown, then the system uses the exact escalation phrase instead of inventing a price.
 - Given a question about Saturday availability, when the time slot is present, then the result reflects the approved status.
-- Given an invalid Gemini response, when JSON validation fails, then the status is not sent.
+- Given an invalid response from any configured AI provider, when JSON validation fails, then the status is not sent.
 - Given staff input n, when approval is refused, then the status is rejected_by_staff.
 - Given a valid draft and staff input y, when approval is accepted, then the status is sent.
 

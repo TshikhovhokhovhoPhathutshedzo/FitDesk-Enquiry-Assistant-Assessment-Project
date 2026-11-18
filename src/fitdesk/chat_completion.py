@@ -50,6 +50,7 @@ def analyze_chat_completion(
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "User-Agent": "FitDesk-Enquiry-Assistant/0.1.0",
         },
         method="POST",
     )

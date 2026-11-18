@@ -1,4 +1,4 @@
-from . import deepseek_client, gemini_client, openrouter_client
+from . import deepseek_client, gemini_client, groq_client, openrouter_client
 from .config import AI_PROVIDER
 from .gemini_client import AIServiceError
 from .models import EnquiryAnalysis
@@ -7,6 +7,7 @@ _PROVIDERS = {
     "gemini": gemini_client,
     "deepseek": deepseek_client,
     "openrouter": openrouter_client,
+    "groq": groq_client,
 }
 
 
