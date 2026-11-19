@@ -311,35 +311,35 @@ def test_invalid_json_failure_is_recorded(monkeypatch):
 
 def test_ai_service_failure_is_recorded(monkeypatch):
     def fail(_):
-        raise AIServiceError("OpenRouter service returned HTTP 402.")
+        raise AIServiceError("Gemini service returned HTTP 503.")
 
     monkeypatch.setattr("fitdesk.cli.analyze_enquiry", fail)
     monkeypatch.setattr(
         "fitdesk.cli.get_provider_metadata",
-        lambda: {"ai_provider": "openrouter", "ai_model": "openai/gpt-4o"},
+        lambda: {"ai_provider": "gemini", "ai_model": "gemini-test"},
     )
     result = process_enquiry("bad question", lambda: "y")
     assert result["status"] == "failed_ai_service"
     assert result["draft"] == ""
     entry = status_log.read_log()[0]
-    assert entry["ai_provider"] == "openrouter"
-    assert entry["ai_model"] == "openai/gpt-4o"
-    assert entry["reason"] == "OpenRouter service returned HTTP 402."
+    assert entry["ai_provider"] == "gemini"
+    assert entry["ai_model"] == "gemini-test"
+    assert entry["reason"] == "Gemini service returned HTTP 503."
 
 
 def test_approved_result_records_provider_and_model(monkeypatch):
     monkeypatch.setattr("fitdesk.cli.analyze_enquiry", lambda message: _analysis())
     monkeypatch.setattr(
         "fitdesk.cli.get_provider_metadata",
-        lambda: {"ai_provider": "groq", "ai_model": "openai/gpt-oss-20b"},
+        lambda: {"ai_provider": "gemini", "ai_model": "gemini-test"},
     )
 
     result = process_enquiry("How much is the 12-session pack?", lambda: "y")
 
     assert result["status"] == "sent"
     entry = status_log.read_log()[0]
-    assert entry["ai_provider"] == "groq"
-    assert entry["ai_model"] == "openai/gpt-oss-20b"
+    assert entry["ai_provider"] == "gemini"
+    assert entry["ai_model"] == "gemini-test"
 
 
 def test_schema_validation_failure_is_logged_as_invalid_json(monkeypatch):
@@ -382,6 +382,7 @@ def test_gemini_request_uses_structured_schema_and_timeout(monkeypatch):
     assert calls["client"]["http_options"].timeout == 20_000
     config = calls["request"]["config"]
     assert config.response_mime_type == "application/json"
+    assert config.max_output_tokens == 256
     schema = config.response_json_schema
     assert schema["type"] == "object"
     assert schema["properties"]["intent"]["enum"] == [

@@ -29,14 +29,13 @@
 | RT-25 | FR-02, FR-03 | Availability value is not Available or Full | Supply status “Maybe” in test data | Fail closed; do not convert it to full or available | Passed in final `pytest -v` run | Pass |
 | RT-26 | FR-06 | Approved data contains invalid UTF-8 | Write invalid UTF-8 bytes to the data file | Log failed_data, never sent | Passed in final `pytest -v` run | Pass |
 | RT-27 | FR-05, FR-06 | Status log contains invalid UTF-8 | Write invalid UTF-8 bytes to the log | Fail closed and preserve the original file | Passed in final `pytest -v` run | Pass |
-| RT-28 | FR-06 | Groq chat-completions provider | Mock Groq JSON-mode response and service errors | Validate the request, parse a valid response, and fail closed on errors | Passed in final `pytest -v` run | Pass |
-| RT-29 | FR-08 | AI request success or failure | Mock an approved response and an OpenRouter HTTP 402 | Log the provider and configured model for both outcomes without the API key | Passed in final `pytest -v` run | Pass |
-| RT-30 | FR-08 | Provider/model metadata in status log | Run an OpenRouter service failure and an approved Groq enquiry | Record the selected provider and configured model on both outcomes; do not record credentials | Passed in final `pytest -v` run | Pass |
+| RT-29 | FR-08 | Gemini request success or failure | Mock an approved response and a Gemini service error | Log Gemini and configured model on both outcomes without the API key | Passed in final `pytest -v` run | Pass |
+| RT-30 | FR-06 | Gemini output budget | Inspect the mocked Gemini request configuration | Cap model output at 256 tokens | Passed in final `pytest -v` run | Pass |
 
 ## Real pytest run
 Fresh venv command: `.venv-validation\Scripts\python.exe -m pytest -v`
-Latest offline run used mocked AI providers and made no network requests:
+Latest offline run used mocked Gemini calls and made no network requests:
 ```
-============================= 60 passed in 6.56s =============================
+============================= 37 passed in 4.90s =============================
 ```
-Live Groq check: the application received a valid structured classification, looked up the approved price and availability, and displayed a draft. Staff rejected the draft, so it was recorded as not sent.
+Historical provider experiments are summarized in [PROJECT_REPORT.md](./PROJECT_REPORT.md). The current application is Gemini-only.

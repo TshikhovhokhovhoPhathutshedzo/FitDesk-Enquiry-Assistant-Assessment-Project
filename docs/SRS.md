@@ -21,15 +21,15 @@
 - FR-05: The status log must record sent, rejected_by_staff, failed_invalid_json, failed_ai_service, and similar states without losing prior entries.
 - FR-06: The clerk must never record a sent status when the AI service fails, JSON is invalid, or the answer is unapproved.
 - FR-07: Partial answers must combine known facts with the escalation phrase when a fact is missing, and the record must be flagged as escalation.
-- FR-08: Each enquiry that attempts an AI request must log the selected provider and configured model name, without logging the API key.
+- FR-08: Each enquiry that attempts an AI request must log the Gemini provider and configured model name, without logging the API key.
 
 ## Non-functional requirements
-- NFR-01 Security: .env holds the selected AI provider's API key, and secret scanning checks stop accidental commit leaks.
+- NFR-01 Security: .env holds the Gemini API key, and secret scanning checks stop accidental commit leaks.
 - NFR-02 Reliability: failed AI calls, malformed output, and timeouts fail closed and leave a non-sent log entry.
 - NFR-03 Cost and simplicity: the project keeps a single data source and deterministic templates to reduce model cost and keep behaviour explainable.
 
 ## Data inputs / outputs
-- Input: customer message, data/fitdesk_data.json, .env configuration, staff approval response.
+- Input: customer message, data/fitdesk_data.json, Gemini .env configuration, staff approval response.
 - Output: deterministic draft message, status_log.json entry, CLI display of the draft and approval prompt.
 
 ## Approval and failure rules

@@ -69,6 +69,7 @@ def analyze_enquiry(message: str) -> EnquiryAnalysis:
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,
+                max_output_tokens=256,
                 response_mime_type="application/json",
                 response_json_schema=_gemini_response_schema(),
             ),

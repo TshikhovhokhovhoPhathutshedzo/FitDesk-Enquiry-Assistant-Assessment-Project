@@ -1,6 +1,6 @@
 # FitDesk Enquiry Assistant — Project and Test Report
 
-**Report date:** 18 November 2026
+**Report date:** 19 November 2026
 
 **Project type:** Python command-line assessment/demo
 
@@ -12,14 +12,14 @@ FitDesk Enquiry Assistant accepts one customer enquiry, uses a selected AI provi
 
 The AI is used to understand the message, not as the source of prices or availability. Code resolves facts from `data/fitdesk_data.json`; unsupported questions use the owner-check escalation phrase. Every draft remains behind a staff approval gate.
 
-The project supports Gemini, DeepSeek, OpenRouter, and Groq. The most recent recorded local configuration selected Groq with `openai/gpt-oss-20b`. A live Groq run returned a valid classification and produced a draft from approved data. Staff rejected that test draft, so it was not recorded as sent. The local status log predates provider/model logging for that run, so the historical rejection record does not itself identify Groq.
+The current application uses Gemini only. Its default model is `gemini-3.5-flash-lite`, Google's cost-efficient Flash-Lite option, and generated output is capped at 256 tokens. Earlier project iterations experimented with DeepSeek, OpenRouter, and Groq; those integrations have been removed. The historical status-log report below preserves those past experiments and should not be read as current provider support.
 
 ## 2. Scope and boundaries
 
 ### Included
 
 - Command-line input, either interactively or as a command argument.
-- Provider selection through `AI_PROVIDER`.
+- Gemini request and JSON classification.
 - Validated JSON classification of intent, requested packages, requested Saturday times, and other details.
 - Approved price and Saturday availability lookup from a local JSON file.
 - Deterministic reply drafting and a fixed escalation phrase for unsupported facts.
@@ -40,31 +40,28 @@ The project supports Gemini, DeepSeek, OpenRouter, and Groq. The most recent rec
 
 1. `src/fitdesk/__main__.py` starts the command-line interface.
 2. `src/fitdesk/cli.py` accepts the enquiry and coordinates the workflow.
-3. `src/fitdesk/ai_client.py` routes it to the provider selected in `.env`.
-4. The provider client returns a classification which is validated against `src/fitdesk/models.py`.
+3. `src/fitdesk/ai_client.py` calls the Gemini integration.
+4. Gemini returns a classification which is validated against `src/fitdesk/models.py`.
 5. `src/fitdesk/lookup.py` checks the customer's actual request against `data/fitdesk_data.json`; model-suggested facts alone are not trusted.
 6. `src/fitdesk/drafter.py` builds the reply from approved facts and escalates unknown information.
 7. `src/fitdesk/approval.py` requires staff to approve or reject the draft.
 8. `src/fitdesk/status_log.py` records the outcome in the local, Git-ignored `status_log.json`.
 
-DeepSeek, OpenRouter, and Groq use shared HTTP, JSON parsing, and Pydantic validation in `src/fitdesk/chat_completion.py`. Gemini uses its SDK-specific structured-output integration in `src/fitdesk/gemini_client.py`.
+`src/fitdesk/gemini_client.py` uses Gemini's SDK-specific structured-output integration. The app does not load or call other AI providers.
 
 ## 4. Provider and model configuration
 
-The provider is selected in `.env` using `AI_PROVIDER`. Each provider has its own key and model setting:
+The app reads the Gemini key and optional model from `.env`:
 
 | Provider | Environment variables | Default model in project configuration |
 |---|---|---|
-| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `gemini-3.8-flash` |
-| DeepSeek | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | `deepseek-flash` |
-| OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `openai/gpt-4o` |
-| Groq | `GROQ_API_KEY`, `GROQ_MODEL` | `openai/gpt-oss-20b` |
+| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `gemini-3.5-flash-lite` |
 
-These are configured defaults, not proof of which model handled a historic request. Earlier status entries did not record model names. The API key is intentionally never written to the status log or committed to the repository.
+Google describes Gemini 3.5 Flash-Lite as optimized for cost-efficient, high-throughput execution. The request caps output at 256 tokens. These measures limit response size and use a cost-efficient model; they do not guarantee a particular bill or free-tier allowance. The key is intentionally never written to the status log or committed to the repository.
 
 ## 5. Status-log findings
 
-The local `status_log.json` was inspected on 18 November 2026. It contained **21 entries** covering 16–18 November. The log file is ignored by Git and is local to the working copy; these counts describe the inspected local snapshot and may differ on another machine.
+The local `status_log.json` was inspected on 18 November 2026. It contained **21 entries** covering 16–18 November. The log file is ignored by Git and is local to the working copy; these counts describe that historical snapshot and may differ on another machine.
 
 ### Overall statuses
 
@@ -105,10 +102,10 @@ These are observations from individual test requests, not guarantees about provi
 
 | Provider/model | Observation | Result |
 |---|---|---|
-| Gemini / configured default `gemini-3.8-flash` | Schema incompatibility was observed first; after the request schema was corrected, later calls returned a credential rejection or deadline timeout. | No verified live FitDesk draft from Gemini. |
-| DeepSeek / configured default `deepseek-flash` | HTTP 402 was returned. | No live classification; account balance was the reported issue. |
-| OpenRouter / configured default `openai/gpt-4o` | HTTP 402 returned; one newer log entry records this exact provider/model pair. | No live classification; no draft generated. |
-| Groq / configured default `openai/gpt-oss-20b` | Initial request returned HTTP 403 with Cloudflare error 1010. Adding a descriptive User-Agent allowed a later request to return a valid classification. | FitDesk created a draft using the approved price and availability; staff rejected it, so it was not sent. |
+| Gemini / model used in earlier test (`gemini-3.8-flash`) | Schema incompatibility was observed first; after the request schema was corrected, later calls returned a credential rejection or deadline timeout. | Those earlier attempts did not produce a verified draft. The current default, `gemini-3.5-flash-lite`, was subsequently live-verified: it returned a valid classification and draft, which staff rejected before sending. |
+| DeepSeek / model not recorded | HTTP 402 was returned. | Historical experiment only; integration removed. |
+| OpenRouter / one new record has `openai/gpt-4o`; other model IDs not recorded | HTTP 402 returned. | Historical experiment only; integration removed. |
+| Groq / model not recorded in the historical log | Initial request returned HTTP 403 with Cloudflare error 1010. Adding a descriptive `User-Agent` allowed a later request to return a valid classification. | Historical experiment only; integration removed. |
 
 The HTTP codes above describe those individual requests. They do not prove that a provider is always unavailable or that another account/model will produce the same result.
 
@@ -136,11 +133,10 @@ Run the offline suite from the repository root:
 python -m pytest -v
 ```
 
-The latest verified run for this report's code change was **60 passed in 6.56 seconds**. The suite uses mocked provider calls, so it does not need API credentials, make network calls, or spend provider credits. It covers:
+The latest verified Gemini-only automated run was **37 passed in 4.90 seconds**. Separately, a live request using `gemini-3.5-flash-lite` successfully classified an enquiry and generated a draft. The staff rejection path was selected, and the status log recorded `rejected_by_staff`, provider `gemini`, and model `gemini-3.5-flash-lite`; nothing was sent. The automated suite uses mocked Gemini calls, so it does not need API credentials or make network calls. It covers:
 
-- Gemini structured schema, timeout settings, and malformed/service responses.
-- DeepSeek, OpenRouter, and Groq chat-completion request construction, JSON parsing, provider routing, and service errors.
-- Provider/model metadata on successful and failed enquiry records.
+- Gemini structured schema, compact 256-token output budget, timeout settings, and malformed/service responses.
+- Gemini model metadata on successful and failed enquiry records.
 - Pricing and availability lookups against approved data, including unsupported requests and prompt-injection-style substitutions.
 - Staff approval, rejection, cancellation, and invalid responses.
 - Missing/corrupt data, malformed AI responses, invalid UTF-8, concurrent status-log updates, and fail-closed behavior.
@@ -150,10 +146,10 @@ The test result is evidence for the tested code paths, not a claim that external
 ## 9. Running and troubleshooting
 
 1. Create and activate a virtual environment, install `requirements.txt`, and copy `.env.example` to `.env`. See the [README setup instructions](../README.md#setup-on-windows).
-2. Put the key only in `.env`, set `AI_PROVIDER` to the corresponding provider, and set its model if you do not want the documented default.
+2. Put the Gemini key only in `.env`; set `GEMINI_MODEL` only if you want to override the Flash-Lite default.
 3. Run `python -m fitdesk` and inspect the draft. Enter `n` for a test run so it is recorded as rejected rather than approved.
 4. If the CLI shows a generic service error, inspect the newest object at the end of local `status_log.json`. New records include `ai_provider`, `ai_model`, `status`, and `reason`; never share or commit `.env`.
-5. Interpret the provider's specific status code. Examples in this project include invalid/rejected credentials (401/403), insufficient credits (402), rate limits (429), and timeouts (504). Check that provider's account and current API documentation before retrying.
+5. For a service failure, inspect the logged HTTP status and check the Gemini credential, model availability, network, or current Gemini API limits before retrying. Historical entries in the report include errors from other providers, but the current app calls Gemini only.
 
 ## 10. Related project documentation
 

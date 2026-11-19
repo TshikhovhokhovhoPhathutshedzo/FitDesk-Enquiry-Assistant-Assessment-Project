@@ -7,7 +7,7 @@ A Python command-line assistant that helps FitDesk staff prepare replies to cust
 ## What happens when it runs
 
 1. The customer enters an enquiry in the terminal.
-2. The selected AI provider classifies the request into the expected fields.
+2. Gemini classifies the request into the expected fields.
 3. The application checks requested packages and times against `data/fitdesk_data.json`.
 4. It builds a reply from approved facts. If a fact is missing or unsupported, it uses: `I'll check with the owner and come back to you.`
 5. Staff reviews the draft and enters `y` to approve or `n` to reject. This approval is always required.
@@ -16,7 +16,7 @@ A Python command-line assistant that helps FitDesk staff prepare replies to cust
 ## Requirements
 
 - Python 3.10 or later
-- An API key for the provider you select
+- A Gemini API key
 - Internet access when running an AI-backed enquiry
 
 ## Setup on Windows
@@ -31,27 +31,15 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and set `AI_PROVIDER` to the provider you want to use: `gemini`, `deepseek`, `openrouter`, or `groq`. Add that provider's key and, if needed, change its model setting. For example, to use Groq:
+Edit `.env` and add your Gemini API key. The application uses Gemini only:
 
 ```dotenv
-AI_PROVIDER=groq
-GROQ_API_KEY=your_groq_key
-GROQ_MODEL=openai/gpt-oss-20b
+GEMINI_API_KEY=your_gemini_key
+GEMINI_MODEL=gemini-3.5-flash-lite
 REQUEST_TIMEOUT_SECONDS=20
 ```
 
-Other provider settings are:
-
-| Provider | Settings in `.env` | Default model |
-|---|---|---|
-| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `gemini-3.8-flash` |
-| DeepSeek | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | `deepseek-flash` |
-| OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `openai/gpt-4o` |
-| Groq | `GROQ_API_KEY`, `GROQ_MODEL` | `openai/gpt-oss-20b` |
-
-`AI_PROVIDER` defaults to `gemini` if it is omitted. Only the key for the selected provider is needed. Keep real credentials in `.env`; do not put them in `.env.example`, source files, screenshots, or commits. The `.env` file is ignored by Git.
-
-Get provider keys from [Google AI Studio](https://aistudio.google.com/), [DeepSeek](https://platform.deepseek.com/api_keys), [OpenRouter](https://openrouter.ai/keys), or [Groq](https://console.groq.com/keys). Check each provider's current pricing and account requirements; API access may require available credits.
+The default model is `gemini-3.5-flash-lite`, Google's cost-efficient Flash-Lite option. The request also caps output at 256 tokens to keep classification responses compact. Model availability, rates, and free-tier limits can change; see [Google's model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) and [pricing](https://ai.google.dev/gemini-api/docs/pricing). Create a key in [Google AI Studio](https://aistudio.google.com/). Keep the real key only in `.env`; `.env.example` contains an empty placeholder and `.env` is ignored by Git.
 
 ## Run the application
 
@@ -83,7 +71,7 @@ Install dependencies as described above, then run:
 python -m pytest
 ```
 
-The tests mock provider calls, so they do not need an API key, internet access, or a paid AI request. They cover provider requests and selection, response validation, approved-data lookups, draft generation, staff approval, error handling, and status logging.
+The tests mock Gemini calls, so they do not need an API key, internet access, or a paid AI request. They cover request configuration, response validation, approved-data lookups, draft generation, staff approval, error handling, and status logging.
 
 ## Project structure
 
@@ -93,6 +81,7 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 │   └── fitdesk_data.json
 ├── docs/
 │   ├── RAPLH_LOG.md
+│   ├── PROJECT_REPORT.md
 │   ├── REGRESSION_TESTS.md
 │   └── SRS.md
 ├── src/
@@ -101,24 +90,17 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 │       ├── __main__.py
 │       ├── ai_client.py
 │       ├── approval.py
-│       ├── chat_completion.py
 │       ├── cli.py
 │       ├── config.py
-│       ├── deepseek_client.py
 │       ├── drafter.py
 │       ├── gemini_client.py
-│       ├── groq_client.py
 │       ├── lookup.py
 │       ├── models.py
-│       ├── openrouter_client.py
 │       ├── status_log.py
 │       └── ui.py
 ├── tests/
 │   ├── conftest.py
-│   ├── test_cli.py
-│   ├── test_deepseek_client.py
-│   ├── test_groq_client.py
-│   └── test_openrouter_client.py
+│   └── test_cli.py
 ├── .env.example
 ├── .gitignore
 ├── pyproject.toml
@@ -134,13 +116,9 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 |---|---|
 | `__main__.py` | Makes `python -m fitdesk` start the command-line application. |
 | `cli.py` | Coordinates the full workflow: input, AI classification, fact lookup, reply drafting, staff approval, and status recording. It is the main place to follow an enquiry through the program. |
-| `config.py` | Loads `.env` settings, provider keys, model names, provider selection, and request timeout. Keeping configuration here avoids embedding machine-specific values in code. |
-| `ai_client.py` | Routes an enquiry to the provider named by `AI_PROVIDER` and reports unsupported provider names. |
-| `gemini_client.py` | Sends Gemini requests using its structured JSON response schema, handles service errors, and validates returned analysis. |
-| `deepseek_client.py` | Supplies DeepSeek's endpoint and configuration to the shared chat-completion implementation. |
-| `openrouter_client.py` | Supplies OpenRouter's endpoint and configuration to the shared chat-completion implementation. |
-| `groq_client.py` | Supplies Groq's endpoint and configuration to the shared chat-completion implementation. |
-| `chat_completion.py` | Shares the JSON-mode HTTP request, error handling, and response validation used by DeepSeek, OpenRouter, and Groq, avoiding duplicated code. |
+| `config.py` | Loads the Gemini key, selected model, and request timeout from `.env`. Keeping configuration here avoids embedding machine-specific values in code. |
+| `ai_client.py` | Provides the single Gemini analysis entry point and reports the non-secret provider/model values written to the status log. |
+| `gemini_client.py` | Sends Gemini requests using its structured JSON response schema and compact output limit, handles service errors, and validates returned analysis. |
 | `models.py` | Defines the allowed enquiry intents and the Pydantic `EnquiryAnalysis` model. Validation prevents unexpected AI output from flowing into later steps. |
 | `lookup.py` | Loads and validates approved studio data, checks what the customer actually requested, and returns matching facts. This is the boundary that prevents the model from inventing or substituting prices and availability. |
 | `drafter.py` | Builds the reply from verified facts and adds the standard owner-check phrase when information is unknown. |
@@ -155,20 +133,17 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 |---|---|
 | `data/fitdesk_data.json` | The approved source of package prices and Saturday slot statuses. Change this file when the studio's confirmed facts change; replies should use these facts rather than model-generated claims. |
 | `tests/conftest.py` | Adds the `src` directory to the test import path and redirects status logs to a temporary directory, keeping tests isolated from real runtime data. |
-| `tests/test_cli.py` | Exercises the application workflow, including approved facts, unsupported requests, approval decisions, and failure cases. |
-| `tests/test_deepseek_client.py` | Checks DeepSeek request construction, provider routing, JSON parsing, and service failures using mocked HTTP responses. |
-| `tests/test_groq_client.py` | Checks Groq request construction, provider routing, JSON parsing, and service failures using mocked HTTP responses. |
-| `tests/test_openrouter_client.py` | Checks the equivalent OpenRouter integration and failure handling without making real API calls. |
+| `tests/test_cli.py` | Exercises the application workflow and Gemini request setup using mocked AI responses; tests do not make real API calls. |
 | `docs/SRS.md` | Records the software requirements, scope, stakeholders, and acceptance criteria. |
 | `docs/REGRESSION_TESTS.md` | Describes the regression-test cases and previously recorded test evidence. |
 | `docs/RAPLH_LOG.md` | Keeps the project's work and bug-fix log. |
-| `docs/PROJECT_REPORT.md` | Gives new readers an end-to-end project, test, provider, and status-log report, including known failures and fixes. |
+| `docs/PROJECT_REPORT.md` | Gives new readers an end-to-end project, test, historical provider, and status-log report, including known failures and fixes. |
 
 ### Root-level files
 
 | File | Purpose and importance |
 |---|---|
-| `.env.example` | Safe template showing the available provider settings. It contains empty credential fields; copy it to `.env` and enter secrets only there. |
+| `.env.example` | Safe Gemini-only configuration template. The `GEMINI_API_KEY` value is empty; copy it to `.env` and enter the real key only there. |
 | `.gitignore` | Prevents local secrets, virtual environments, caches, and runtime status logs from being added to Git. |
 | `pyproject.toml` | Defines project metadata, Python compatibility, dependencies, and the `src` package layout used by installation tools. |
 | `requirements.txt` | Lists the packages installed by `pip install -r requirements.txt`, including the project itself and test dependency. |
@@ -196,7 +171,7 @@ The tests mock provider calls, so they do not need an API key, internet access, 
 
 ## AI assistance
 
-Provider request formats were checked against their API documentation. An AI coding assistant helped with implementation and testing. All package prices and availability used by the application remain in the approved local data file.
+Gemini request formatting and the selected Flash-Lite model were checked against Google's API documentation. An AI coding assistant helped with implementation and testing. All package prices and availability used by the application remain in the approved local data file.
 
 ## Working style
 

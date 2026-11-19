@@ -1,5 +1,12 @@
 # RAPLH log
 
+### [GENUINE] 2026-11-19 — Restrict AI integration to Gemini and select Flash-Lite
+- Task/expectation: Use only the Gemini API key, ensure `.env.example` contains no real key, and select a cost-efficient model with a bounded response.
+- Files changed: .env.example, README.md, docs/PROJECT_REPORT.md, docs/REGRESSION_TESTS.md, docs/SRS.md, src/fitdesk/ai_client.py, src/fitdesk/config.py, src/fitdesk/gemini_client.py, tests/test_cli.py; removed DeepSeek/OpenRouter/Groq clients and tests.
+- Test run and result: `.venv-validation\Scripts\python.exe -m pytest -q` completed with `37 passed in 4.90s`; `compileall` and `git diff --check` succeeded.
+- What was corrected: Removed non-Gemini routing/configuration, changed the default model to `gemini-3.5-flash-lite`, capped generated output at 256 tokens, and kept `GEMINI_API_KEY` blank in `.env.example`. The local `.env` model setting was updated without displaying or changing the Gemini credential.
+- Approval decision: One live request was made using the user's local Gemini key; the classification and draft succeeded, then the draft was rejected (`n`). The local status log records `rejected_by_staff`, provider `gemini`, and model `gemini-3.5-flash-lite`; no message was sent. Existing historic status-log entries remain unchanged and are documented as previous provider experiments.
+
 ### [GENUINE] 2026-11-18 — Record provider/model in enquiry status and document project evidence
 - Task/expectation: Make AI failures attributable to a provider/model and produce a reader-friendly report from code, tests, and available local status-log evidence.
 - Files changed: src/fitdesk/ai_client.py, src/fitdesk/cli.py, tests/test_cli.py, README.md, docs/SRS.md, docs/REGRESSION_TESTS.md, docs/PROJECT_REPORT.md.
