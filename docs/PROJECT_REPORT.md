@@ -8,9 +8,9 @@
 
 ## 1. Executive summary
 
-FitDesk Enquiry Assistant accepts one customer enquiry, uses Gemini to classify it, verifies requested prices and Saturday times against local approved data, drafts a response, asks staff to approve or reject it, and records the outcome.
+FitDesk Enquiry Assistant now runs as a continuous local terminal chatbot. It handles multiple customer turns until the customer exits, uses recent chat history for follow-ups, checks prices and Saturday availability against local approved data, and records the response for each turn. The earlier staff-reviewed enquiry helper remains for the assessment regression workflow but is not the default chatbot path.
 
-The AI is used to understand the message, not as the source of prices or availability. Code resolves facts from `data/fitdesk_data.json`; unsupported questions use the owner-check escalation phrase. Every draft remains behind a staff approval gate.
+The AI is used to classify messages and understand follow-ups, not as the source of prices or availability. Code resolves facts from `data/fitdesk_data.json`; unsupported questions use the owner-check escalation phrase. Simple greetings receive a friendly local response without a Gemini call. Chatbot replies are displayed directly in the terminal without a staff approval prompt, but they are not sent externally.
 
 The current application uses Gemini only. Its default model is `gemini-3.5-flash-lite`, Google's cost-efficient Flash-Lite option, and generated output is capped at 256 tokens. It also limits requests to 10 per client and 30 total per rolling 60 seconds using an SQLite-backed limiter shared across processes that use the same local database file. Earlier project iterations experimented with DeepSeek, OpenRouter, and Groq; those integrations have been removed. The historical status-log report below preserves those past experiments and should not be read as current provider support.
 
@@ -18,36 +18,36 @@ The current application uses Gemini only. Its default model is `gemini-3.5-flash
 
 ### Included
 
-- Command-line input, either interactively or as a command argument.
-- Gemini request and JSON classification.
+- Continuous terminal conversation, with `done`, `exit`, and `quit` commands.
+- Recent conversation context for Gemini classification of non-greeting turns.
+- Friendly greeting handling without a Gemini call.
 - Validated JSON classification of intent, requested packages, requested Saturday times, and other details.
 - Approved price and Saturday availability lookup from a local JSON file.
-- Deterministic reply drafting and a fixed escalation phrase for unsupported facts.
-- Staff approval (`y`) or rejection (`n`) before a result can be recorded as sent.
+- Deterministic chatbot replies, a fixed off-topic response, and an escalation phrase for unsupported facts.
+- Booking-request safety: display the approved sample schedule but never place or confirm a booking.
+- A separate staff approval helper retained for the assessment regression workflow.
 - Local status history with atomic updates and process locking.
 - A per-client and shared SQLite-backed sliding-window request limit before Gemini calls; processes must use the same local database file to share the counters.
 - Mocked offline regression tests for provider integrations and the application flow.
 
 ### Not included
 
-- Sending email, text, WhatsApp, or other customer messages.
+- Public web access or sending email, text, WhatsApp, or other customer messages.
 - Making bookings, taking payments, or connecting to a live scheduling system.
 - Automatically refreshing the sample availability data.
 - Guaranteeing provider uptime, free usage, account credits, or model availability.
 
-“Approved and recorded as sent” is a local status value; it does not mean a message was transmitted to a customer.
+`responded_in_chat` means the reply was displayed in the local terminal only. This is a local prototype, not a publicly deployed production service.
 
 ## 3. How a request moves through the application
 
-1. `src/fitdesk/__main__.py` starts the command-line interface.
-2. `src/fitdesk/cli.py` accepts the enquiry and coordinates the workflow.
-3. `src/fitdesk/rate_limiter.py` checks the client and shared request budgets before any AI call.
-4. `src/fitdesk/ai_client.py` calls the Gemini integration.
-5. Gemini returns a classification which is validated against `src/fitdesk/models.py`.
-6. `src/fitdesk/lookup.py` checks the customer's actual request against `data/fitdesk_data.json`; model-suggested facts alone are not trusted.
-7. `src/fitdesk/drafter.py` builds the reply from approved facts and escalates unknown information.
-8. `src/fitdesk/approval.py` requires staff to approve or reject the draft.
-9. `src/fitdesk/status_log.py` records the outcome in the local, Git-ignored `status_log.json`.
+1. `src/fitdesk/__main__.py` starts the continuous terminal chat.
+2. `src/fitdesk/cli.py` manages the conversation, exit commands, and recent turn history.
+3. Simple greetings and clear Saturday booking questions are answered from local rules/data. Other messages pass through the rate limiter and Gemini structured classifier.
+4. Gemini receives the FitDesk knowledge base, approved business data, and up to 10 recent turns.
+5. `src/fitdesk/lookup.py` checks the current request—and customer-provided context when a short follow-up refers back—against `data/fitdesk_data.json`.
+6. `src/fitdesk/drafter.py` builds replies from approved facts; booking requests include requested package prices and relevant sample availability, plus a fixed no-booking disclosure. Clear Saturday booking queries work during a Gemini outage because they use local approved data directly.
+7. `src/fitdesk/status_log.py` records each local response or failure under a conversation ID in Git-ignored `status_log.json`.
 
 `src/fitdesk/gemini_client.py` uses Gemini's SDK-specific structured-output integration. The app does not load or call other AI providers.
 
@@ -139,7 +139,7 @@ Run the offline suite from the repository root:
 python -m pytest -v
 ```
 
-The latest verified automated run was **45 passed in 14.41 seconds**. Separately, a live request using `gemini-3.5-flash-lite` successfully classified an enquiry and generated a draft. The staff rejection path was selected, and the status log recorded `rejected_by_staff`, provider `gemini`, and model `gemini-3.5-flash-lite`; nothing was sent. The automated suite uses mocked Gemini calls, so it does not need API credentials or make network calls. It covers:
+The latest verified automated run was **60 passed in 27.33 seconds**. The suite uses mocked Gemini calls, so it does not need API credentials or make network calls. It covers:
 
 - Gemini structured schema, compact 256-token output budget, timeout settings, and malformed/service responses.
 - Gemini model metadata on successful and failed enquiry records.

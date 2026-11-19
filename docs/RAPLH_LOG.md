@@ -1,5 +1,35 @@
 # RAPLH log
 
+### [GENUINE] 2026-11-19 — Keep clear booking answers working during Gemini outage
+- Task/expectation: Address the logged Gemini HTTP 503 high-demand error for a customer asking the Saturday 14:00 slot status and single-session price.
+- Files changed: src/fitdesk/cli.py, src/fitdesk/lookup.py, tests/test_cli.py, README.md, docs/SRS.md, docs/REGRESSION_TESTS.md, docs/PROJECT_REPORT.md.
+- What was corrected: Clearly FitDesk-related Saturday booking questions now use the approved local package and availability data without waiting for Gemini. A 14:00 time absent from the sample schedule is reported as unlisted, never available. Gemini failure logs now mark `ai_used: true` when classification raises an error, and retain provider/model metadata.
+- Test run and result: `.venv\Scripts\python.exe -m pytest -q` completed with `60 passed in 27.33s`; `git diff --check` succeeded. The exact outage/booking scenario and Gemini 503 log regression passed.
+- Approval decision: No live Gemini call was made.
+
+### [GENUINE] 2026-11-19 — Answer combined booking, price, and availability questions
+- Task/expectation: Fix the user's example where a request for a single Saturday session at 10 asking both availability and price returned only the booking disclaimer and slot status.
+- Files changed: src/fitdesk/cli.py, src/fitdesk/lookup.py, tests/test_cli.py, README.md, docs/SRS.md, docs/REGRESSION_TESTS.md, docs/PROJECT_REPORT.md.
+- What was corrected: The booking path now also looks up requested package prices. Customer wording such as "a session" resolves to the approved Single session package (R180); the response includes that price, only the requested Saturday slot (10:00, Full), and a clear statement that no booking is placed and the sample schedule is not live.
+- Test run and result: `.venv\Scripts\python.exe -m pytest -q` completed with `58 passed in 33.88s`; `git diff --check` succeeded.
+- Approval decision: Added the exact reported combined query as a regression test; targeted and full tests passed. No live Gemini request was made.
+
+### [GENUINE] 2026-11-19 — Fix greeting and booking-time handling
+- Task/expectation: Correct two chatbot behaviors shown by the user: "hi fitdesk" should receive a greeting instead of an owner-check fallback, and a booking request for Saturday at 10 should report the requested slot rather than all slots.
+- Files changed: src/fitdesk/cli.py, tests/test_cli.py, docs/SRS.md, docs/REGRESSION_TESTS.md, docs/PROJECT_REPORT.md.
+- What was corrected: Greeting detection now accepts a FitDesk salutation and small-talk follow-up. Booking time parsing accepts numeric hour, am/pm, and HH:MM forms, normalizes them to the approved schedule, and limits the reply to the requested slot. Unlisted hours are not represented as available.
+- Test run and result: `.venv\Scripts\python.exe -m pytest -q` completed with `57 passed in 21.50s`; `git diff --check` succeeded.
+- Approval decision: The two reported cases were first added as regression tests and confirmed to fail, then passed after the fixes. No live Gemini request was made.
+
+### [GENUINE] 2026-11-19 — Add continuous terminal customer chat
+- Task/expectation: Move the local CLI from a one-enquiry staff approval demo to a continuous customer-chat prototype, remain terminal-only, keep the conversation open until the customer exits, and do not make bookings.
+- Prompt summary: “Let customers communicate with the chatbot; continue the conversation until they are done and keep bookings in order.” Clarification: terminal only, local-first, answer availability only; bookings are not to be submitted.
+- Files changed: src/fitdesk/cli.py, src/fitdesk/ai_client.py, src/fitdesk/gemini_client.py, src/fitdesk/knowledge_base.py, src/fitdesk/ui.py, data/knowledge_base.json, tests/test_cli.py, README.md, docs/SRS.md, docs/REGRESSION_TESTS.md, docs/PROJECT_REPORT.md.
+- What was corrected: Default CLI now provides a multi-turn chat with `done`/`exit`/`quit` commands, retains up to 10 recent turns in Gemini context, responds to simple greetings without a model call, and displays replies without the staff approval prompt. Booking requests show the approved sample Saturday schedule, clearly state that no live booking is made, and refer customers to staff.
+- Test run and result: `.venv\Scripts\python.exe -m pytest -q` completed with `53 passed in 21.76s`; `git diff --check` succeeded.
+- Scope limitation: This is still a local terminal prototype, not a deployed public production service. Availability is sample data and there is no calendar, messaging, or booking integration. The separate `process_enquiry` approval helper remains for the assessment regression workflow.
+- Approval decision: Local implementation and offline tests verified. No live Gemini request was made for this change.
+
 ### [GENUINE] 2026-11-19 — Share rate limits across concurrent CLI processes
 - Task/expectation: During the assignment compliance review, make the three-client rate limit effective across separate application processes instead of only within one process.
 - Prompt summary: “Review the project against the assessment brief, close the gaps, then commit everything and push to the renamed repository.”

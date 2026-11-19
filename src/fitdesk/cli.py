@@ -1,18 +1,26 @@
-"""Run the enquiry pipeline: classify, verify facts, draft, approve, and log."""
+"""Run the continuous terminal chatbot and retain the assessment approval helper."""
 
 import json
+import re
 import sys
+from uuid import uuid4
 
 from .approval import ApprovalCancelled, get_staff_decision
 from .ai_client import analyze_enquiry, get_provider_metadata
 from .config import RATE_LIMIT_CLIENT_ID
 from .drafter import draft_reply
 from .gemini_client import AIServiceError, InvalidJSONError
-from .lookup import DataFileError, extract_known_facts
+from .lookup import DataFileError, extract_known_facts, load_data
 from .knowledge_base import load_knowledge_base
 from .rate_limiter import RATE_LIMITER, RateLimitExceeded, RateLimiterUnavailable
 from .status_log import StatusLogError, append_status_entry
-from .ui import show_customer_message, show_draft_reply, show_error, show_understood_analysis
+from .ui import (
+    show_chat_reply,
+    show_customer_message,
+    show_draft_reply,
+    show_error,
+    show_understood_analysis,
+)
 
 
 def _record_result(entry: dict, result: dict, ai_metadata: dict | None = None) -> dict:
@@ -146,46 +154,274 @@ def process_enquiry(
     )
 
 
-def main(argv=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if argv:
-        message = " ".join(argv)
-    else:
-        try:
-            message = input("Customer message: ")
-        except (EOFError, KeyboardInterrupt):
-            _failure_result("", "failed_cancelled", "Customer input was cancelled.")
-            show_error("Enquiry input was cancelled. Nothing was sent.")
-            return 1
+_EXIT_COMMANDS = {"done", "exit", "quit"}
+_BOOKING_PATTERN = re.compile(r"\b(book|booking|reserve|reservation|appointment)\b", re.I)
+_FITDESK_BOOKING_PATTERN = re.compile(
+    r"\b(book|booking|reserve|reservation|appointment)\b"
+    r"(?:(?![.!?]).){0,80}\b(?:session|training)\b|"
+    r"\b(?:session|training)\b"
+    r"(?:(?![.!?]).){0,80}\b(book|booking|reserve|reservation|appointment)\b",
+    re.I,
+)
+_GREETING_PATTERN = re.compile(
+    r"^(?:hi+|hello+|hey+|good morning|good afternoon|good evening|"
+    r"how are you|how's it going|how are you doing|what's up)"
+    r"(?:[,\s]+fitdesk(?:\s+assistant)?)?"
+    r"(?:[,\s]+(?:how are you(?: doing)?|how's it going|what's up))?[.!? ]*$",
+    re.I,
+)
+_BOOKING_TIME_PATTERN = re.compile(
+    r"(?:(?P<prefix>\b(?:at|around|by|for|saturday)\s+)|\b)"
+    r"(?P<hour>\d{1,2})(?::(?P<minute>[0-5]\d))?"
+    r"\s*(?P<meridiem>a\.?m\.?|p\.?m\.?)?\b"
+    r"(?!\s*(?:sessions?|packs?)\b)",
+    re.I,
+)
+_FOLLOW_UP_PATTERN = re.compile(
+    r"\b(it|that|those|them|there|then|same|what about|and|how much|"
+    r"how many|which one|what time)\b",
+    re.I,
+)
 
-    if not message.strip():
-        result = process_enquiry("")
-        show_error("Please enter a customer enquiry. Nothing was sent.")
-        return 1
+
+def _is_greeting(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", message.strip())
+    return bool(_GREETING_PATTERN.fullmatch(normalized))
+
+
+def _lookup_message(message: str, history: list[dict[str, str]]) -> str:
+    if len(message.split()) > 10 or not _FOLLOW_UP_PATTERN.search(message):
+        return message
+    previous_customer_message = next(
+        (item["content"] for item in reversed(history) if item.get("role") == "user"),
+        "",
+    )
+    return f"{previous_customer_message} {message}".strip()
+
+
+def _requested_booking_times(message: str) -> list[str]:
+    requested_times = []
+    for match in _BOOKING_TIME_PATTERN.finditer(message):
+        minute = match.group("minute")
+        meridiem = match.group("meridiem")
+        if not (match.group("prefix") or minute or meridiem):
+            continue
+
+        hour = int(match.group("hour"))
+        if meridiem:
+            if not 1 <= hour <= 12:
+                continue
+            normalized_meridiem = meridiem.casefold().replace(".", "")
+            if normalized_meridiem == "pm" and hour != 12:
+                hour += 12
+            elif normalized_meridiem == "am" and hour == 12:
+                hour = 0
+        elif hour > 23:
+            continue
+
+        requested_time = f"{hour:02d}:{int(minute or '0'):02d}"
+        if requested_time not in requested_times:
+            requested_times.append(requested_time)
+    return requested_times
+
+
+def _booking_reply(message: str, facts: dict) -> str:
+    availability = load_data()["saturday_availability"]
+    requested_times = _requested_booking_times(message)
+    if requested_times:
+        slots = "; ".join(
+            (
+                f"Saturday {time}: {availability[time].casefold()}"
+                if time in availability
+                else f"Saturday {time}: not listed in the approved schedule"
+            )
+            for time in requested_times
+        )
+    else:
+        slots = "; ".join(
+            f"Saturday {time}: {status.casefold()}"
+            for time, status in availability.items()
+        )
+    sentences = [
+        f"The {package} is {price}."
+        for package, price in facts.get("prices", {}).items()
+    ]
+    sentences.append(f"The approved Saturday schedule lists: {slots}.")
+    if re.search(r"\b(?:how much|price|cost)\b", message, re.I) and not facts.get("prices"):
+        sentences.append("I'll check with the owner and come back to you.")
+    sentences.append(
+        "I can't place, reserve, or confirm a booking here, and this schedule isn't live. "
+        "Please contact FitDesk staff to check current availability and arrange "
+        "a booking."
+    )
+    return " ".join(sentences)
+
+
+def _chat_failure(
+    message: str,
+    conversation_id: str,
+    status: str,
+    reason: str,
+    ai_metadata: dict,
+    ai_used: bool,
+) -> dict:
+    return _record_result(
+        {
+            "conversation_id": conversation_id,
+            "original_message": message,
+            "intent": "unknown",
+            "is_fitdesk_related": None,
+            "ai_used": ai_used,
+            "draft_text": "",
+            "status": status,
+            "escalation": False,
+            "reason": reason,
+        },
+        {"status": status, "reply": "", "escalation": False},
+        ai_metadata if ai_used else None,
+    )
+
+
+def process_chat_turn(
+    message: str,
+    history: list[dict[str, str]] | None = None,
+    conversation_id: str | None = None,
+    client_id: str = RATE_LIMIT_CLIENT_ID,
+) -> dict:
+    """Answer one customer turn without the staff-draft approval workflow."""
+    message = message.strip()
+    if not message:
+        return {"status": "ignored_empty_input", "reply": ""}
+
+    history = history or []
+    conversation_id = conversation_id or uuid4().hex
+    show_customer_message(message)
+    ai_metadata = get_provider_metadata()
+    ai_used = False
 
     try:
-        result = process_enquiry(message)
-    except KeyboardInterrupt:
-        _failure_result(message, "failed_cancelled", "Enquiry processing was cancelled.")
-        show_error("Enquiry processing was cancelled. Nothing was sent.")
-        return 1
+        RATE_LIMITER.check(client_id)
+        if _is_greeting(message):
+            reply = load_knowledge_base()["greeting_reply"]
+            escalation = False
+            related = True
+            intent = "other"
+            ai_used = False
+        elif _FITDESK_BOOKING_PATTERN.search(message):
+            facts = extract_known_facts(None, _lookup_message(message, history))
+            reply = _booking_reply(message, facts)
+            escalation = bool(
+                re.search(r"\b(?:how much|price|cost)\b", message, re.I)
+                and not facts.get("prices")
+            )
+            related = True
+            intent = "pricing_and_availability" if facts.get("prices") else "availability"
+            ai_used = False
+        else:
+            ai_used = True
+            analysis = analyze_enquiry(message, history)
+            related = analysis.is_fitdesk_related
+            intent = analysis.intent.value
+            if not related:
+                reply = load_knowledge_base()["off_topic_reply"]
+                escalation = False
+            elif _BOOKING_PATTERN.search(message):
+                facts = extract_known_facts(analysis, _lookup_message(message, history))
+                reply = _booking_reply(message, facts)
+                escalation = bool(
+                    re.search(r"\b(?:how much|price|cost)\b", message, re.I)
+                    and not facts.get("prices")
+                )
+            else:
+                facts = extract_known_facts(analysis, _lookup_message(message, history))
+                reply, escalation = draft_reply(analysis, facts)
+    except RateLimitExceeded as exc:
+        return _chat_failure(
+            message, conversation_id, "rate_limited", str(exc), ai_metadata, ai_used
+        )
+    except RateLimiterUnavailable as exc:
+        return _chat_failure(
+            message, conversation_id, "failed_rate_limiter", str(exc), ai_metadata, ai_used
+        )
+    except DataFileError as exc:
+        return _chat_failure(
+            message, conversation_id, "failed_data", str(exc), ai_metadata, ai_used
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        return _chat_failure(
+            message,
+            conversation_id,
+            "failed_data",
+            f"Could not read approved FitDesk data: {exc}",
+            ai_metadata,
+            ai_used,
+        )
+    except InvalidJSONError as exc:
+        return _chat_failure(
+            message, conversation_id, "failed_invalid_json", str(exc), ai_metadata, ai_used
+        )
+    except AIServiceError as exc:
+        return _chat_failure(
+            message, conversation_id, "failed_ai_service", str(exc), ai_metadata, ai_used
+        )
 
-    if result["status"] != "sent":
-        messages = {
-            "failed_ai_service": "AI service unavailable. Check the API key or connection; nothing was sent.",
-            "failed_invalid_json": "The AI response was invalid. Nothing was sent.",
-            "failed_data": "Approved FitDesk data or knowledge base could not be read. Nothing was sent.",
-            "failed_status_log": "The result could not be recorded. Nothing was sent.",
-            "failed_cancelled": "Enquiry processing was cancelled. Nothing was sent.",
-            "failed_approval": "Staff approval was not confirmed. Nothing was sent.",
-            "rejected_by_staff": "Staff rejected the draft. Nothing was sent.",
-            "rate_limited": "Too many enquiries. Please wait before trying again.",
-            "failed_rate_limiter": "The request limit could not be checked. Nothing was sent.",
-        }
-        show_error(messages.get(result["status"], "The enquiry was not sent."))
-        return 1
-    print("Approved and recorded as sent.")
-    return 0
+    result = {"status": "responded_in_chat", "reply": reply, "escalation": escalation}
+    entry = {
+        "conversation_id": conversation_id,
+        "original_message": message,
+        "intent": intent,
+        "is_fitdesk_related": related,
+        "ai_used": ai_used,
+        "draft_text": reply,
+        "status": "responded_in_chat",
+        "escalation": escalation,
+        "reason": "Displayed to the customer in the local terminal chat.",
+    }
+    recorded = _record_result(entry, result, ai_metadata if ai_used else None)
+    if recorded["status"] == "responded_in_chat":
+        show_chat_reply(reply)
+    return recorded
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    history: list[dict[str, str]] = []
+    conversation_id = uuid4().hex
+    print("FitDesk chat started. Ask about packages or Saturday availability.")
+    print("Type done, exit, or quit when you want to end the conversation.")
+    pending_messages = [" ".join(argv)] if argv else []
+
+    try:
+        while True:
+            message = pending_messages.pop(0) if pending_messages else input("You: ")
+            if message.strip().casefold() in _EXIT_COMMANDS:
+                print("Chat ended. No booking was made.")
+                return 0
+
+            result = process_chat_turn(message, history, conversation_id)
+            if result["status"] == "responded_in_chat":
+                history.extend(
+                    [
+                        {"role": "user", "content": message.strip()},
+                        {"role": "assistant", "content": result["reply"]},
+                    ]
+                )
+                del history[:-20]
+            else:
+                messages = {
+                    "failed_ai_service": "I couldn't reach the AI service. Check the API key or connection, then try again.",
+                    "failed_invalid_json": "I couldn't understand the AI response. Please rephrase and try again.",
+                    "failed_data": "FitDesk's approved information couldn't be read. Please try again later.",
+                    "failed_status_log": "I couldn't record this response. Please try again.",
+                    "rate_limited": "Please wait a moment before sending another message.",
+                    "failed_rate_limiter": "I couldn't check the request limit. Please try again later.",
+                }
+                show_error(
+                    messages.get(result["status"], "I couldn't answer that. Please try again.")
+                )
+    except (EOFError, KeyboardInterrupt):
+        print("\nChat ended. No booking was made.")
+        return 0
 
 
 if __name__ == "__main__":

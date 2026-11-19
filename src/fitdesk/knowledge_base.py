@@ -20,6 +20,7 @@ def load_knowledge_base() -> dict:
         "scope_definition",
         "supported_topics",
         "response_rules",
+        "greeting_reply",
         "off_topic_reply",
     )
     if not isinstance(knowledge_base, dict) or any(
@@ -28,7 +29,7 @@ def load_knowledge_base() -> dict:
         raise DataFileError("The FitDesk knowledge base is missing required fields.")
     if not all(
         isinstance(knowledge_base[key], str)
-        for key in ("company", "scope_definition", "off_topic_reply")
+        for key in ("company", "scope_definition", "greeting_reply", "off_topic_reply")
     ) or not all(
         isinstance(knowledge_base[key], list)
         and all(isinstance(item, str) for item in knowledge_base[key])
@@ -37,7 +38,7 @@ def load_knowledge_base() -> dict:
         raise DataFileError("The FitDesk knowledge base has invalid field types.")
     if any(
         not knowledge_base[key].strip()
-        for key in ("company", "scope_definition", "off_topic_reply")
+        for key in ("company", "scope_definition", "greeting_reply", "off_topic_reply")
     ):
         raise DataFileError("The FitDesk knowledge base has an empty required value.")
     return knowledge_base

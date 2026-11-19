@@ -87,7 +87,10 @@ def _requested_package_names(message: str, data: dict) -> list[str]:
             if unknown_name not in requested:
                 requested.append(unknown_name)
 
-    if re.search(r"\bsingle\s+session\b", message.lower()):
+    if re.search(
+        r"\b(?:a|one|single)\s+(?:training\s+)?session\b",
+        message.lower(),
+    ):
         single_name = next(
             (
                 package.get("name", "")
@@ -127,8 +130,9 @@ def find_saturday_slot(text: str):
     return None, None
 
 
-def extract_known_facts(analysis, message: str = "") -> dict:
+def extract_known_facts(analysis=None, message: str = "") -> dict:
     data = load_data()
+    analysis_details = getattr(analysis, "details", "")
     known = {
         "prices": {},
         "availability": {},
@@ -150,7 +154,7 @@ def extract_known_facts(analysis, message: str = "") -> dict:
         else:
             known["prices"][package["name"]] = package["price"]
 
-    if not message:
+    if not message and analysis is not None:
         for package_name in analysis.packages:
             package = find_package(package_name)
             if package is None:
@@ -158,7 +162,7 @@ def extract_known_facts(analysis, message: str = "") -> dict:
             else:
                 known["prices"][package["name"]] = package["price"]
 
-    saturday_times = analysis.saturday_times or []
+    saturday_times = getattr(analysis, "saturday_times", None) or []
     if message:
         requested_times = re.findall(r"\b(?:[01]?\d|2[0-3]):[0-5]\d\b", message)
         known_times = data.get("saturday_availability", {})
@@ -183,14 +187,16 @@ def extract_known_facts(analysis, message: str = "") -> dict:
         known["unknown"].extend(day for day in unsupported_days if day not in known["unknown"])
         if re.search(r"\bclasses?\b", message.lower()):
             known["unknown"].append("class information")
-        note = _normalize(analysis.details)
+        note = _normalize(analysis_details)
         if note and note in _normalize(message) and not any(
             existing in note for existing in (_normalize(name) for name in packages)
         ):
             if note not in (_normalize(item) for item in known["unknown"]):
-                known["unknown"].append(analysis.details)
-    elif not saturday_times and analysis.details:
-        saturday_times = [time for time in data.get("saturday_availability", {}) if time in analysis.details]
+                known["unknown"].append(analysis_details)
+    elif analysis is not None and not saturday_times and analysis_details:
+        saturday_times = [
+            time for time in data.get("saturday_availability", {}) if time in analysis_details
+        ]
 
     for slot in saturday_times:
         if slot in data.get("saturday_availability", {}):

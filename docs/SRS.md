@@ -1,57 +1,54 @@
 # FitDesk Enquiry Assistant SRS
 
 ## Business objective
-- Help a Hermanus fitness studio respond to customer enquiries using approved pricing and Saturday slot data only.
-- Keep staff in control of every outbound message and reject invented facts.
+- Provide an interactive terminal chatbot for customers to ask FitDesk questions.
+- Answer package-price and Saturday-availability questions from approved local data.
+- Keep chat behavior clear about the prototype's lack of booking and messaging integrations.
 
 ## Stakeholders
+- FitDesk customers
 - Studio owner / staff
-- Customer service team
 - Assessment reviewers
 
 ## In / out of scope
-- In scope: enquiry classification, data lookup, draft reply generation, staff approval, safe status logging, failure handling.
-- Out of scope: automated bookings, payments, WhatsApp integration, real-time availability refresh.
+- In scope: continuous terminal conversation, Gemini-assisted scope/intent classification, recent-turn context, approved data lookup, deterministic replies, off-topic handling, rate limiting, and local audit logging.
+- Out of scope: public web or mobile access, WhatsApp/email integration, real bookings, payments, live calendar synchronization, and other weekdays or service details without approved data.
 
 ## Functional requirements
-- FR-01: The system must classify each customer message into a constrained intent: pricing, availability, pricing_and_availability, or other.
-- FR-02: The system must read approved data from data/fitdesk_data.json and never invent missing values.
-- FR-03: When no fact is available, the system must return the exact escalation phrase: "I'll check with the owner and come back to you."
-- FR-04: Staff approval is always required before a message is logged as sent.
-- FR-05: The status log must record sent, rejected_by_staff, failed_invalid_json, failed_ai_service, and similar states without losing prior entries.
-- FR-06: The assistant must never record a sent status when the AI service fails, JSON is invalid, or the answer is unapproved.
-- FR-07: Partial answers must combine known facts with the escalation phrase when a fact is missing, and the record must be flagged as escalation.
-- FR-08: Each enquiry that attempts an AI request must log the Gemini provider and configured model name, without logging the API key.
-- FR-09: The system must enforce a rolling rate limit of 10 enquiries per client and 30 enquiries in total per 60 seconds before calling Gemini. Requests over either limit must be logged as rate_limited and must not call the AI service.
-- FR-10: Every Gemini classification request must include the validated FitDesk knowledge base and approved studio data. The structured response must classify whether the enquiry is FitDesk-related.
-- FR-11: For an off-topic enquiry, the system must draft the fixed FitDesk-only reply from the knowledge base rather than answer the unrelated request. Staff approval remains mandatory, and the scope classification must be included in the status log.
+- FR-01: The chatbot must remain available for multiple customer messages until the customer types `done`, `exit`, or `quit`, or interrupts with Ctrl+C.
+- FR-02: Simple greetings and small talk, including greetings addressed to FitDesk, must receive a friendly FitDesk response without being treated as an off-topic request.
+- FR-03: Non-greeting messages must be classified into the constrained intent set and FitDesk scope using Gemini structured output.
+- FR-04: The Gemini prompt must include the knowledge base, approved studio data, and no more than the 10 most recent conversation turns.
+- FR-05: Requested package prices and Saturday availability must be verified against `data/fitdesk_data.json`; the model must not be the source of those facts.
+- FR-06: Missing or unsupported FitDesk facts must use the exact phrase: "I'll check with the owner and come back to you."
+- FR-07: Off-topic messages must receive the fixed FitDesk-only reply from the knowledge base.
+- FR-08: The chatbot must not create, reserve, or confirm appointments. Clear Saturday booking requests must be answerable from local approved data without relying on Gemini availability. Booking requests must still answer requested package prices and availability from approved data. It may show the relevant approved sample Saturday time and status when the customer specifies a numeric time (for example, "at 10"), clearly labeled as not live; an unlisted time must be reported as unlisted, not available or full. Direct customers to FitDesk staff to arrange a booking.
+- FR-09: Each client must be limited to 10 requests and the application to 30 requests in a rolling 60-second window; blocked requests must not call Gemini.
+- FR-10: Chat replies and failures must be recorded with a conversation ID and status. `responded_in_chat` must mean only that text was displayed in the local terminal, not sent externally.
+- FR-11: AI attempts must record the Gemini provider and configured model without recording the API key.
+- FR-12: Missing/corrupt knowledge or business data, invalid AI output, AI errors, and rate-limiter failures must fail closed with an explicit error and must never claim a booking was made.
+- FR-13: The separate `process_enquiry` assessment helper may retain its staff approval workflow; the main terminal chatbot must not require staff approval for each reply.
 
 ## Non-functional requirements
-- NFR-01 Security: Keep the Gemini API key only in the Git-ignored .env file; .env.example must contain an empty key placeholder.
-- NFR-02 Reliability: Failed AI calls, malformed output, timeouts, and rate-limit-store errors fail closed and never become sent. SQLite transactions make concurrent rate-limit checks atomic for processes sharing the local database file.
-- NFR-03 Cost and simplicity: the project keeps a single data source and deterministic templates to reduce model cost and keep behaviour explainable.
+- NFR-01 Security: Keep the Gemini API key only in the Git-ignored `.env`; `.env.example` must not contain a key.
+- NFR-02 Reliability: Validation, rate limiting, and local logging must fail closed. SQLite coordinates rate checks only for processes on the same machine using the same file.
+- NFR-03 Grounding: Use deterministic templates and local approved facts for customer-facing claims.
+- NFR-04 Prototype boundary: The terminal chat is local-only, uses sample availability, and is not a deployed public production service.
 
 ## Data inputs / outputs
-- Input: customer message, data/fitdesk_data.json, Gemini .env configuration, client ID, and staff approval response.
-- Output: deterministic draft message, status_log.json entry, CLI display of the draft and approval prompt, and rate-limit outcome when a request is blocked.
-
-## Approval and failure rules
-- If staff says n, status is rejected_by_staff and no sent log is written.
-- If facts are missing and staff approves the escalation message, the log may record sent with escalation: true.
-- If the AI response is malformed or the AI service fails, the system logs a failed state and never marks the message as sent.
+- Input: customer chat messages, recent conversation turns, knowledge base, approved studio JSON data, Gemini configuration, and client ID.
+- Output: a terminal reply, local `status_log.json` record, and explicit error text when processing fails.
 
 ## Acceptance criteria
-- Given a question about a known package, when the data exists, then the system replies with the approved price and no invented value.
-- Given a question about a package not in the data file, when the package is unknown, then the system uses the exact escalation phrase instead of inventing a price.
-- Given a question about Saturday availability, when the time slot is present, then the result reflects the approved status.
-- Given an invalid Gemini response, when JSON validation fails, then the status is not sent.
-- Given staff input n, when approval is refused, then the status is rejected_by_staff.
-- Given a valid draft and staff input y, when approval is accepted, then the status is sent.
-- Given a client or the application exceeds its rolling request allowance, when another enquiry is submitted, then it is logged as rate_limited without calling Gemini.
-- Given a message unrelated to FitDesk, when Gemini classifies it as off-topic, then the system drafts the fixed scope reply and still requires staff approval.
-- Given the knowledge base is missing or invalid, when an enquiry is processed, then the system fails closed and never records it as sent.
+- Given "how are you?" or "hi FitDesk", the chatbot responds warmly and keeps the conversation open without calling Gemini.
+- Given successive customer messages, the chatbot continues until an exit command and includes recent turns in non-greeting Gemini requests.
+- Given a known package or Saturday slot, the reply uses only the approved local value.
+- Given a booking request for Saturday at 10, the chatbot reports the approved 10:00 status only, does not claim to make a booking, and labels the schedule as non-live.
+- Given a request to book a single session Saturday at 10 and ask its price, the chatbot reports R180 and the 10:00 status (full), and clearly states no booking was made.
+- Given a Gemini service outage and a clear Saturday session booking request, the chatbot still returns the approved package price and slot status without claiming to have contacted a live calendar.
+- Given an unrelated request, the chatbot returns the fixed FitDesk-only reply.
+- Given an invalid model response, service error, corrupt data, or request-limit failure, the chatbot logs a failure and does not claim success.
+- Given a successfully displayed response, the log status is `responded_in_chat`; it must not imply an external message was sent.
 
-## Ambiguities and assumptions
-- What is unclear: whether enquiries about other weekdays or class schedules should be answered. What I'd ask the owner: “Should the assistant handle class schedules beyond Saturday availability?” [ASSUMPTION] Until data is added, those questions escalate to the owner.
-- What is unclear: whether package names have customer-facing aliases. What I'd ask the owner: “Are there approved alternative names for single, 5-session, and 12-session packages?” [ASSUMPTION] Only names and values in the data file are treated as approved.
-- What is unclear: what to say when a request mixes supported and unsupported facts. What I'd ask the owner: “Should we include the known part and escalate the unknown part?” [ASSUMPTION] The assistant includes known facts and adds the exact escalation phrase for missing facts.
+## Separate assessment workflow
+`process_enquiry` retains the staff-reviewed draft flow used by the assessment regression tests. The default `python -m fitdesk` command runs the continuous terminal chatbot instead.

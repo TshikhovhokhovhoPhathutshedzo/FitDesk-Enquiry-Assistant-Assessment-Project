@@ -11,6 +11,9 @@ def get_provider_metadata() -> dict:
     }
 
 
-def analyze_enquiry(message: str) -> EnquiryAnalysis:
-    """Classify an enquiry using Gemini."""
-    return gemini_client.analyze_enquiry(message)
+def analyze_enquiry(
+    message: str,
+    conversation_history: list[dict[str, str]] | None = None,
+) -> EnquiryAnalysis:
+    """Classify an enquiry using Gemini, optionally with recent chat context."""
+    return gemini_client.analyze_enquiry(message, conversation_history)

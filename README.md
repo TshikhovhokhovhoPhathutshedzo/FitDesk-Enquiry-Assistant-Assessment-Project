@@ -4,22 +4,22 @@
 
 [Repository](https://github.com/TshikhovhokhovhoPhathutshedzo/rahn-assessment-Phathutshedzo-Tshikhovhokhovho)
 
-A Python command-line assistant that helps FitDesk staff prepare replies to customer enquiries. It uses an AI model to classify what the customer asked, but uses the studio's local approved data—not the model—to determine package prices and Saturday availability. Every draft must be reviewed by staff before it is recorded as approved.
+A Python terminal chatbot prototype that lets a customer have a continuous conversation with FitDesk. Gemini classifies non-greeting messages and uses recent chat context; the program builds responses from approved local information rather than letting the model invent prices or availability.
 
-> **Important:** This is an assessment/demo application. It does not send email or messages, make bookings, take payments, or refresh live studio availability. “Approved and recorded as sent” means the staff-approved result was written to the local status log.
+> **Important:** This is a local terminal prototype, not a deployed production service. It does not send messages externally, make or confirm bookings, take payments, or refresh live availability. Booking-related messages receive the listed Saturday schedule and a clear instruction to contact FitDesk staff; the displayed sample schedule is not a live calendar.
 
 ## What happens when it runs
 
-1. The customer enters an enquiry in the terminal.
-2. Gemini receives the FitDesk scope rules in `data/knowledge_base.json` and approved prices/availability in `data/fitdesk_data.json`, then classifies the request as FitDesk-related or off-topic using a validated JSON response.
-3. The application checks requested packages and times against `data/fitdesk_data.json`.
-4. It builds a reply from approved facts. If a fact is missing or unsupported, it uses: `I'll check with the owner and come back to you.`
-5. For an off-topic request, it drafts the fixed FitDesk-only reply from the knowledge base instead of answering the unrelated request. Staff reviews either kind of draft and enters `y` to approve or `n` to reject. This approval is always required.
-6. The outcome is recorded in `status_log.json`. Failed requests and rejected drafts are not recorded as sent.
+1. The chatbot opens a terminal conversation and stays available until the customer types `done`, `exit`, or `quit` (or presses Ctrl+C).
+2. Simple greetings receive a friendly deterministic response without using Gemini. Clear Saturday booking questions also use local approved data directly, so temporary Gemini outages do not block price and slot-status answers. Other messages are sent to Gemini with the FitDesk knowledge base, approved studio data, and up to the 10 most recent conversation turns.
+3. The application checks requested prices and Saturday times against `data/fitdesk_data.json`; it does not rely on model-generated prices or availability.
+4. Unsupported facts use: `I'll check with the owner and come back to you.` Off-topic messages get a fixed FitDesk-only reply.
+5. Booking requests are not submitted. The chatbot answers requested package prices and Saturday times from approved data (including stating when a time is not listed), then tells the customer to contact FitDesk staff to confirm current availability and arrange a booking.
+6. Each response or failure is recorded in `status_log.json` with a conversation ID. A `responded_in_chat` status means only that the reply was shown in the local terminal; no external message was sent.
 
-Enquiries are rate limited before any Gemini request: each client can submit up to 10 enquiries in a rolling 60-second window, with a shared application limit of 30 per 60 seconds. This supports three clients at 10 enquiries per minute each and prevents one client from using the whole allowance. A rejected request is logged as `rate_limited` and does not call Gemini. SQLite stores the rolling counters in the ignored `.rate_limit.sqlite3` file so concurrent processes on the same machine share the limit.
+Every chat turn is rate limited: each client can submit up to 10 messages in a rolling 60-second window, with a shared application limit of 30 per 60 seconds. Greetings do not call Gemini. SQLite stores the rolling counters in the ignored `.rate_limit.sqlite3` file so concurrent processes on the same machine share the limit.
 
-By default, the command-line app identifies its caller as `local`. To enforce per-client quotas for three users, configure a distinct `FITDESK_CLIENT_ID` for each user; code can also pass a `client_id` to `process_enquiry`. This is an identifier, not authentication. Processes must use the same local database file to share the total cap; separate machines or hosted instances need a shared service/database.
+By default, the command-line app identifies its caller as `local`. To enforce per-client quotas for three users, configure a distinct `FITDESK_CLIENT_ID` for each user. This is an identifier, not authentication. Processes must use the same local database file to share the total cap; separate machines or hosted instances need a shared service/database.
 
 ## Requirements
 
@@ -58,13 +58,13 @@ With the virtual environment activated, run either:
 python -m fitdesk
 ```
 
-The program prompts for a customer enquiry. To pass one directly as a command-line argument:
+The chatbot prompts for messages continuously. Say `done`, `exit`, or `quit` when you want to end the conversation. To start the chat with an opening message:
 
 ```powershell
-python -m fitdesk "How much is the 12-session pack and do you have Saturday slots?"
+python -m fitdesk "Hi, how much is the 12-session pack?"
 ```
 
-The application displays its interpretation and a draft, then prompts `Send? (y/n)`. Enter `y` to approve and record it, or `n` to reject it. No external message is sent.
+The application replies directly in the terminal; there is no staff approval prompt in chatbot mode. This is still a local simulation—customers cannot connect over the internet.
 
 If you do not activate the virtual environment, use its Python executable directly:
 
@@ -80,7 +80,7 @@ Install dependencies as described above, then run:
 python -m pytest
 ```
 
-The tests mock Gemini calls, so they do not need an API key, internet access, or a paid AI request. They cover knowledge-base context and off-topic handling, request configuration, response validation, approved-data lookups, draft generation, staff approval, error handling, and status logging.
+The tests mock Gemini calls, so they do not need an API key, internet access, or a paid AI request. They cover continuous chat, greetings, follow-up context, booking safety, knowledge-base context, approved-data lookups, error handling, rate limiting, and status logging. The staff-reviewed `process_enquiry` path is retained for assessment tests but is not used by the chatbot command.
 
 ## Project structure
 
@@ -128,7 +128,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 | File | Purpose and importance |
 |---|---|
 | `__main__.py` | Makes `python -m fitdesk` start the command-line application. |
-| `cli.py` | Coordinates the full workflow: input, AI classification, fact lookup, reply drafting, staff approval, and status recording. It is the main place to follow an enquiry through the program. |
+| `cli.py` | Runs the continuous terminal chat, handles exit commands and conversation context, classifies messages, grounds replies, and logs each turn. It also retains `process_enquiry` for the separate staff-reviewed assessment workflow. |
 | `config.py` | Loads the Gemini key, selected model, and request timeout from `.env`. Keeping configuration here avoids embedding machine-specific values in code. |
 | `ai_client.py` | Provides the single Gemini analysis entry point and reports the non-secret provider/model values written to the status log. |
 | `gemini_client.py` | Sends Gemini requests using its structured JSON response schema and compact output limit, handles service errors, and validates returned analysis. |
@@ -137,7 +137,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 | `rate_limiter.py` | Applies per-client and shared rolling-window request limits before Gemini is called. SQLite transactions make checks atomic across concurrent processes using the same local database file. The CLI client ID is configurable with `FITDESK_CLIENT_ID`; this value identifies a client but does not authenticate it. |
 | `lookup.py` | Loads and validates approved studio data, checks what the customer actually requested, and returns matching facts. This is the boundary that prevents the model from inventing or substituting prices and availability. |
 | `drafter.py` | Builds the reply from verified facts and adds the standard owner-check phrase when information is unknown. |
-| `approval.py` | Keeps the staff approval prompt in a focused module and handles cancellation and invalid responses. |
+| `approval.py` | Keeps the staff approval prompt for the assessment's separate staff-reviewed workflow; chatbot mode does not request approval per customer message. |
 | `ui.py` | Displays customer input, analysis, draft, and errors in the terminal using Rich panels. |
 | `status_log.py` | Appends outcomes to `status_log.json` with locking and atomic file replacement so concurrent writes do not silently overwrite one another. Enquiry entries include the selected `ai_provider` and `ai_model` (not the secret key). |
 | `__init__.py` | Marks `fitdesk` as a Python package and exposes its version. |
@@ -182,10 +182,11 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 
 ## What doesn't work yet
 
-- The application handles one enquiry per command-line run.
+- One local terminal conversation runs at a time; each new run starts a new conversation.
 - English enquiries are the supported and tested language.
 - Availability is sample/local data and is not refreshed from a live booking system.
-- The application does not send replies, make bookings, process payments, or integrate with WhatsApp/email.
+- The terminal chatbot is local only; it is not deployed for public customers and does not send replies externally.
+- The application does not make bookings, process payments, or integrate with WhatsApp/email.
 - Rate-limit counters are shared only by processes using the same local SQLite file; separate machines or hosted instances do not share the counters.
 - Gemini may reject requests because of invalid credentials, account credits, model availability, provider rate limits, or network issues.
 

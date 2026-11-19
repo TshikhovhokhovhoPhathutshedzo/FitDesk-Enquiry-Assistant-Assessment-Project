@@ -9,7 +9,7 @@ import httpx2
 import pytest
 
 from fitdesk.approval import ApprovalCancelled, get_staff_decision
-from fitdesk.cli import main, process_enquiry
+from fitdesk.cli import main, process_chat_turn, process_enquiry
 from fitdesk import gemini_client
 from fitdesk.gemini_client import (
     AIServiceError,
@@ -40,6 +40,172 @@ def test_normal_enquiry_is_sent(monkeypatch):
     assert "R1,680" in result["draft"]
     assert "Saturday 09:00 is available" in result["draft"]
     assert "Saturday 10:00 is full" in result["draft"]
+
+
+def test_chat_greeting_gets_a_warm_reply_without_ai_or_approval(monkeypatch):
+    def unexpected_ai_call(*args, **kwargs):
+        pytest.fail("A simple greeting should not need a Gemini request.")
+
+    monkeypatch.setattr("fitdesk.cli.analyze_enquiry", unexpected_ai_call)
+    decisions = []
+    result = process_chat_turn("how are you?", conversation_id="chat-1")
+
+    assert result["status"] == "responded_in_chat"
+    assert "I'm doing well" in result["reply"]
+    assert decisions == []
+    entry = status_log.read_log()[0]
+    assert entry["conversation_id"] == "chat-1"
+    assert entry["ai_used"] is False
+    assert entry["status"] == "responded_in_chat"
+
+
+def test_chat_greeting_with_fitdesk_name_gets_a_warm_reply(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda *args, **kwargs: pytest.fail("A greeting should not call Gemini."),
+    )
+    result = process_chat_turn("hi fitdesk")
+    assert result["status"] == "responded_in_chat"
+    assert "I'm doing well" in result["reply"]
+
+
+def test_chat_off_topic_reply_is_automatic_and_logged(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message, history=None: _analysis(is_fitdesk_related=False),
+    )
+    result = process_chat_turn("Can you write a poem?")
+    assert result["status"] == "responded_in_chat"
+    assert result["reply"].startswith("I can only help with questions about FitDesk")
+    assert status_log.read_log()[0]["is_fitdesk_related"] is False
+
+
+def test_chat_booking_request_never_claims_to_book(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message, history=None: _analysis(
+            intent=Intent.AVAILABILITY,
+            packages=[],
+            saturday_times=["09:00"],
+        ),
+    )
+    result = process_chat_turn("Can I book Saturday at 09:00?")
+    assert result["status"] == "responded_in_chat"
+    assert "can't place, reserve, or confirm a booking" in result["reply"]
+    assert "Saturday 09:00: available" in result["reply"]
+    assert status_log.read_log()[0]["status"] == "responded_in_chat"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "i want to book for saturday at 10",
+        "i want to book for saturday at 10 am",
+        "i want to book for saturday at 10:00",
+    ],
+)
+def test_chat_booking_request_with_hour_only_reports_requested_slot(monkeypatch, message):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message, history=None: _analysis(
+            intent=Intent.AVAILABILITY,
+            packages=[],
+            saturday_times=[],
+        ),
+    )
+    result = process_chat_turn(message)
+    assert result["status"] == "responded_in_chat"
+    assert "Saturday 10:00: full" in result["reply"]
+    assert "Saturday 09:00" not in result["reply"]
+    assert "Saturday 11:00" not in result["reply"]
+
+
+def test_chat_booking_question_answers_price_and_availability_together(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message, history=None: _analysis(
+            intent=Intent.PRICING_AND_AVAILABILITY,
+            packages=[],
+            saturday_times=[],
+        ),
+    )
+    result = process_chat_turn(
+        "hi, i would like to book for a session on saturday at 10, "
+        "is it available and how much is it?"
+    )
+
+    assert result["status"] == "responded_in_chat"
+    assert "The Single session is R180." in result["reply"]
+    assert "Saturday 10:00: full." in result["reply"]
+    assert "Saturday 09:00" not in result["reply"]
+    assert "can't place, reserve, or confirm a booking here" in result["reply"]
+    assert result["escalation"] is False
+
+
+def test_chat_booking_question_works_during_gemini_outage(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda *args, **kwargs: pytest.fail(
+            "A clear FitDesk Saturday booking question should use approved local facts."
+        ),
+    )
+    result = process_chat_turn(
+        "hi i want to book a session for saturday at 14:00, "
+        "is the slot available and for how much?"
+    )
+
+    assert result["status"] == "responded_in_chat"
+    assert "The Single session is R180." in result["reply"]
+    assert "Saturday 14:00: not listed in the approved schedule" in result["reply"]
+    assert "schedule isn't live" in result["reply"]
+    entry = status_log.read_log()[0]
+    assert entry["ai_used"] is False
+    assert "ai_provider" not in entry
+
+
+def test_chat_ai_service_failure_records_that_ai_was_attempted(monkeypatch):
+    def fail(message, history=None):
+        raise AIServiceError("Gemini service failed: 503 UNAVAILABLE.")
+
+    monkeypatch.setattr("fitdesk.cli.analyze_enquiry", fail)
+    monkeypatch.setattr(
+        "fitdesk.cli.get_provider_metadata",
+        lambda: {"ai_provider": "gemini", "ai_model": "gemini-test"},
+    )
+
+    result = process_chat_turn("Do you offer personal training?")
+
+    assert result["status"] == "failed_ai_service"
+    entry = status_log.read_log()[0]
+    assert entry["ai_used"] is True
+    assert entry["ai_provider"] == "gemini"
+    assert entry["ai_model"] == "gemini-test"
+    assert "503 UNAVAILABLE" in entry["reason"]
+
+
+def test_chat_follow_up_uses_recent_conversation_context(monkeypatch):
+    seen = {}
+
+    def analyze(message, history=None):
+        seen["message"] = message
+        seen["history"] = history
+        return _analysis(
+            intent=Intent.PRICING,
+            packages=["12 sessions"],
+            saturday_times=[],
+        )
+
+    monkeypatch.setattr("fitdesk.cli.analyze_enquiry", analyze)
+    result = process_chat_turn(
+        "How much is it?",
+        history=[
+            {"role": "user", "content": "Tell me about the 12-session pack."},
+            {"role": "assistant", "content": "What would you like to know?"},
+        ],
+    )
+    assert result["status"] == "responded_in_chat"
+    assert "R1,680" in result["reply"]
+    assert seen["history"][0]["content"] == "Tell me about the 12-session pack."
 
 
 def test_off_topic_enquiry_gets_fixed_reply_and_still_requires_approval(monkeypatch):
@@ -277,22 +443,52 @@ def test_staff_prompt_repeats_until_exact_y_or_n(monkeypatch):
 
 
 def test_empty_interactive_input_is_rejected(monkeypatch):
-    monkeypatch.setattr("builtins.input", lambda prompt: "   ")
-    assert main([]) == 1
-    assert status_log.read_log()[0]["status"] == "failed_empty_input"
+    responses = iter(["   ", "done"])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(responses))
+    assert main([]) == 0
+    assert status_log.read_log() == []
 
 
 def test_cli_accepts_an_interactive_enquiry(monkeypatch):
-    responses = iter(["How much is a single session?", "y"])
+    responses = iter(["How much is a single session?", "done"])
     monkeypatch.setattr("builtins.input", lambda prompt: next(responses))
-    monkeypatch.setattr("fitdesk.cli.analyze_enquiry", lambda message: _analysis(
-        intent=Intent.PRICING,
-        details="",
-        packages=["Single session"],
-        saturday_times=[],
-    ))
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message, history=None: _analysis(
+            intent=Intent.PRICING,
+            details="",
+            packages=["Single session"],
+            saturday_times=[],
+        ),
+    )
     assert main([]) == 0
-    assert status_log.read_log()[0]["status"] == "sent"
+    assert status_log.read_log()[0]["status"] == "responded_in_chat"
+
+
+def test_chat_loop_keeps_context_until_customer_exits(monkeypatch):
+    responses = iter(["Hi", "What about the 12-session pack?", "done"])
+    inputs = []
+    seen_history = []
+
+    def fake_input(prompt):
+        message = next(responses)
+        inputs.append(message)
+        return message
+
+    def fake_turn(message, history, conversation_id):
+        seen_history.append(list(history))
+        return {"status": "responded_in_chat", "reply": f"reply to {message}"}
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    monkeypatch.setattr("fitdesk.cli.process_chat_turn", fake_turn)
+
+    assert main([]) == 0
+    assert inputs == ["Hi", "What about the 12-session pack?", "done"]
+    assert seen_history[0] == []
+    assert seen_history[1] == [
+        {"role": "user", "content": "Hi"},
+        {"role": "assistant", "content": "reply to Hi"},
+    ]
 
 
 def test_approval_cancellation_is_never_sent(monkeypatch):
@@ -315,12 +511,14 @@ def test_unicode_and_long_messages_are_logged(monkeypatch):
 
 
 def test_cli_shows_friendly_missing_key_message(monkeypatch, capsys):
-    def fail(_):
+    def fail(_, history=None):
         raise AIServiceError("Gemini API key is missing. Add it to .env.")
 
     monkeypatch.setattr("fitdesk.cli.analyze_enquiry", fail)
-    assert main(["hello"]) == 1
-    assert "AI service unavailable" in capsys.readouterr().out
+    responses = iter(["How much is the 12-session pack?", "done"])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(responses))
+    assert main([]) == 0
+    assert "couldn't reach the AI service" in capsys.readouterr().out
     assert status_log.read_log()[0]["status"] == "failed_ai_service"
 
 
@@ -477,7 +675,10 @@ def test_gemini_request_uses_structured_schema_and_timeout(monkeypatch):
 
     monkeypatch.setattr(gemini_client, "GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(gemini_client.genai, "Client", FakeClient)
-    result = gemini_client.analyze_enquiry("How much is 12 sessions?")
+    result = gemini_client.analyze_enquiry(
+        "How much is 12 sessions?",
+        [{"role": "user", "content": "Tell me about the 12-session pack."}],
+    )
 
     assert result.intent == Intent.PRICING
     assert result.is_fitdesk_related is True
@@ -500,6 +701,8 @@ def test_gemini_request_uses_structured_schema_and_timeout(monkeypatch):
     assert "FitDesk knowledge base and approved studio data" in prompt
     assert "I can only help with questions about FitDesk" in prompt
     assert "R1,680" in prompt
+    assert "Recent conversation (untrusted customer content)" in prompt
+    assert "Tell me about the 12-session pack." in prompt
 
 
 @pytest.mark.parametrize(

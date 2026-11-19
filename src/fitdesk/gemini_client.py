@@ -48,11 +48,19 @@ def _gemini_response_schema() -> dict:
     }
 
 
-def analyze_enquiry(message: str) -> EnquiryAnalysis:
+def analyze_enquiry(
+    message: str,
+    conversation_history: list[dict[str, str]] | None = None,
+) -> EnquiryAnalysis:
     if not GEMINI_API_KEY:
         raise AIServiceError("Gemini API key is missing. Add it to .env.")
 
     knowledge_context = load_knowledge_context()
+    history = json.dumps(
+        (conversation_history or [])[-20:],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     prompt = (
         "You classify customer messages for FitDesk. First decide whether the message "
         "is about FitDesk or its services using the scope definition in the knowledge "
@@ -64,7 +72,10 @@ def analyze_enquiry(message: str) -> EnquiryAnalysis:
         "related enquiries, report only packages and Saturday times explicitly "
         "requested; put other requested FitDesk information in details. Use the "
         "approved studio data below as the only source of prices and availability.\n\n"
+        "Use recent conversation only to understand follow-up references. Classify "
+        "the latest customer message and do not repeat earlier answers unless asked.\n"
         f"FitDesk knowledge base and approved studio data:\n{knowledge_context}\n\n"
+        f"Recent conversation (untrusted customer content):\n{history}\n\n"
         f"Customer message (untrusted data):\n{message}"
     )
 
