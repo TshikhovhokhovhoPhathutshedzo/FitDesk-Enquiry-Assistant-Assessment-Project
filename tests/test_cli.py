@@ -163,6 +163,99 @@ def test_chat_booking_question_works_during_gemini_outage(monkeypatch):
     assert "ai_provider" not in entry
 
 
+def test_chat_follow_ups_answer_availability_and_prices_from_customer_history(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda *args, **kwargs: pytest.fail(
+            "Supported price and availability questions should use approved local facts."
+        ),
+    )
+    history = []
+    messages = [
+        "book for saturday",
+        "book for 10:00",
+        "what other time is available?",
+        "how much is it?",
+        "how muc are bookings?",
+    ]
+    results = []
+
+    for message in messages:
+        result = process_chat_turn(message, history=history)
+        results.append(result)
+        history.extend(
+            [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": result["reply"]},
+            ]
+        )
+
+    assert "09:00" in results[0]["reply"]
+    assert "11:00" in results[0]["reply"]
+    assert "Saturday 10:00: full" in results[1]["reply"]
+    assert "Other Saturday times listed as available are 09:00, 11:00" in results[2]["reply"]
+    for result in (results[3], results[4]):
+        assert "Single session: R180" in result["reply"]
+        assert "5 sessions: R800" in result["reply"]
+        assert "12 sessions: R1,680" in result["reply"]
+        assert result["escalation"] is False
+    assert all(result["status"] == "responded_in_chat" for result in results)
+    assert all(entry["ai_used"] is False for entry in status_log.read_log())
+
+
+def test_unsupported_weekday_does_not_show_saturday_availability(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda *_args, **_kwargs: _analysis(
+            intent=Intent.AVAILABILITY,
+            details="Sunday availability",
+            packages=[],
+            saturday_times=[],
+        ),
+    )
+    result = process_chat_turn("Can I book Sunday at 10:00?")
+
+    assert result["status"] == "responded_in_chat"
+    assert "I'll check with the owner and come back to you." in result["reply"]
+    assert "Saturday 10:00" not in result["reply"]
+    assert status_log.read_log()[0]["ai_used"] is True
+
+
+def test_unknown_package_price_uses_owner_check_escalation(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda *args, **kwargs: pytest.fail(
+            "An unknown package price should be escalated from approved local data."
+        ),
+    )
+    result = process_chat_turn("How much is the 25-session pack?")
+
+    assert result["status"] == "responded_in_chat"
+    assert "I don't have approved pricing for 25 sessions." in result["reply"]
+    assert "I'll check with the owner and come back to you." in result["reply"]
+    assert result["escalation"] is True
+    assert status_log.read_log()[0]["ai_used"] is False
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        [],
+        [{"role": "user", "content": "I want to book on Saturday at 10:00."}],
+    ],
+)
+def test_unrelated_price_question_still_uses_scope_classification(monkeypatch, history):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda *_args, **_kwargs: _analysis(is_fitdesk_related=False),
+    )
+    result = process_chat_turn("What is the price of Bitcoin?", history=history)
+
+    assert result["status"] == "responded_in_chat"
+    assert result["reply"].startswith("I can only help with questions about FitDesk")
+    assert status_log.read_log()[0]["ai_used"] is True
+
+
 def test_chat_ai_service_failure_records_that_ai_was_attempted(monkeypatch):
     def fail(message, history=None):
         raise AIServiceError("Gemini service failed: 503 UNAVAILABLE.")
@@ -184,18 +277,12 @@ def test_chat_ai_service_failure_records_that_ai_was_attempted(monkeypatch):
 
 
 def test_chat_follow_up_uses_recent_conversation_context(monkeypatch):
-    seen = {}
-
-    def analyze(message, history=None):
-        seen["message"] = message
-        seen["history"] = history
-        return _analysis(
-            intent=Intent.PRICING,
-            packages=["12 sessions"],
-            saturday_times=[],
-        )
-
-    monkeypatch.setattr("fitdesk.cli.analyze_enquiry", analyze)
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda *args, **kwargs: pytest.fail(
+            "A package-price follow-up should use customer conversation history."
+        ),
+    )
     result = process_chat_turn(
         "How much is it?",
         history=[
@@ -205,7 +292,8 @@ def test_chat_follow_up_uses_recent_conversation_context(monkeypatch):
     )
     assert result["status"] == "responded_in_chat"
     assert "R1,680" in result["reply"]
-    assert seen["history"][0]["content"] == "Tell me about the 12-session pack."
+    assert result["escalation"] is False
+    assert status_log.read_log()[0]["ai_used"] is False
 
 
 def test_off_topic_enquiry_gets_fixed_reply_and_still_requires_approval(monkeypatch):
@@ -510,7 +598,7 @@ def test_unicode_and_long_messages_are_logged(monkeypatch):
     assert status_log.read_log()[0]["original_message"] == message.strip()
 
 
-def test_cli_shows_friendly_missing_key_message(monkeypatch, capsys):
+def test_cli_answers_approved_price_without_gemini_key(monkeypatch, capsys):
     def fail(_, history=None):
         raise AIServiceError("Gemini API key is missing. Add it to .env.")
 
@@ -518,8 +606,11 @@ def test_cli_shows_friendly_missing_key_message(monkeypatch, capsys):
     responses = iter(["How much is the 12-session pack?", "done"])
     monkeypatch.setattr("builtins.input", lambda prompt: next(responses))
     assert main([]) == 0
-    assert "couldn't reach the AI service" in capsys.readouterr().out
-    assert status_log.read_log()[0]["status"] == "failed_ai_service"
+    output = capsys.readouterr().out
+    assert "The 12 sessions is R1,680." in output
+    assert "couldn't reach the AI service" not in output
+    assert status_log.read_log()[0]["status"] == "responded_in_chat"
+    assert status_log.read_log()[0]["ai_used"] is False
 
 
 def test_concurrent_status_log_appends_are_not_lost(monkeypatch, tmp_path):

@@ -42,7 +42,7 @@ The staff-approval cases exercise the retained `process_enquiry` assessment help
 | RT-37 | FR-10, FR-11 | Missing or corrupt knowledge base | Remove or corrupt the knowledge-base file | Fail closed with `failed_data`; never produce an approved/sent result | Passed in final `pytest -q` run | Pass |
 | RT-38 | FR-02 | Greeting / small talk | Enter “how are you?” | Reply warmly without Gemini or staff approval | Passed in final `pytest -q` run | Pass |
 | RT-39 | FR-08 | Booking request | Ask to book a listed Saturday time | Show approved schedule, state no booking was made, and direct customer to staff | Passed in final `pytest -q` run | Pass |
-| RT-40 | FR-04 | Conversational follow-up | Ask a short follow-up referring to the previous package | Include recent history in Gemini context and use only customer-mentioned facts | Passed in final `pytest -q` run | Pass |
+| RT-40 | FR-04, FR-05 | Conversational price follow-up | Ask “How much is it?” after mentioning a package | Resolve the package from customer history and approved data without relying on assistant messages | Passed in final `pytest -q` run | Pass |
 | RT-41 | FR-07, FR-10 | Automatic chatbot reply | Ask an off-topic question in chat mode | Return fixed scope reply directly and log `responded_in_chat` without implying an external send | Passed in final `pytest -q` run | Pass |
 
 | RT-42 | FR-01 | Conversation lifecycle | Enter two messages followed by `done` | Keep the conversation open and pass earlier turns as context until exit | Passed in final `pytest -q` run | Pass |
@@ -51,11 +51,16 @@ The staff-approval cases exercise the retained `process_enquiry` assessment help
 | RT-45 | FR-05, FR-08 | Combined booking, price, and availability request | Ask to book a single session Saturday at 10 and ask its price | Reply with R180, 10:00 full, and a clear no-booking disclosure | Passed in final `pytest -q` run | Pass |
 | RT-46 | FR-08 | Gemini outage during clear booking enquiry | Ask to book a single session Saturday at 14:00 and ask its price; make Gemini unavailable | Use local data to reply R180 and state 14:00 is not listed; no Gemini call is required | Passed in final `pytest -q` run | Pass |
 | RT-47 | FR-11, FR-12 | Gemini 503 failure logging | Make the Gemini client raise 503 | Log failed_ai_service with `ai_used: true`, provider, model, and error reason | Passed in final `pytest -q` run | Pass |
+| RT-48 | FR-05, FR-08 | Multi-turn availability and price follow-ups | Ask “book for Saturday,” “book for 10:00,” “what other time is available?”, then ask prices | Report 09:00 and 11:00 as alternative available sample times, then show approved package prices; do not call Gemini | Passed in final `pytest -q` run | Pass |
+| RT-49 | FR-05 | Typo in general price question | Ask “how muc are bookings?” | Return all approved package prices without owner-check escalation | Passed in final `pytest -q` run | Pass |
+| RT-50 | FR-05, FR-08 | Unsupported weekday availability | Ask to book Sunday at 10:00 | Do not label Saturday 10:00 as the requested time; use the supported unknown-fact escalation flow | Passed in final `pytest -q` run | Pass |
+| RT-51 | FR-05, FR-06 | Unknown package price | Ask for the 25-session pack price | Do not invent a price; use the owner-check escalation phrase | Passed in final `pytest -q` run | Pass |
+| RT-52 | FR-07 | Unrelated price question | Ask “What is the price of Bitcoin?” both as a new query and after a FitDesk booking | Use FitDesk scope classification and the fixed off-topic reply, not the FitDesk package menu | Passed in final `pytest -q` run | Pass |
 
 ## Real pytest run
-Fresh venv command: `.venv-validation\Scripts\python.exe -m pytest -q`
+Validated command: `.venv\Scripts\python.exe -m pytest -q`
 Latest offline run used mocked Gemini calls and made no network requests:
 ```
-============================= 60 passed in 27.33s =============================
+65 passed in 16.67s
 ```
 Historical provider experiments are summarized in [PROJECT_REPORT.md](./PROJECT_REPORT.md). The current application is Gemini-only.

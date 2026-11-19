@@ -4,16 +4,16 @@
 
 [Repository](https://github.com/TshikhovhokhovhoPhathutshedzo/rahn-assessment-Phathutshedzo-Tshikhovhokhovho)
 
-A Python terminal chatbot prototype that lets a customer have a continuous conversation with FitDesk. Gemini classifies non-greeting messages and uses recent chat context; the program builds responses from approved local information rather than letting the model invent prices or availability.
+A Python terminal chatbot prototype that lets a customer have a continuous conversation with FitDesk. A deterministic local response layer handles supported package-price and Saturday-availability questions, including follow-ups using earlier customer messages. Gemini classifies other messages; prices and availability always come from approved local information.
 
 > **Important:** This is a local terminal prototype, not a deployed production service. It does not send messages externally, make or confirm bookings, take payments, or refresh live availability. Booking-related messages receive the listed Saturday schedule and a clear instruction to contact FitDesk staff; the displayed sample schedule is not a live calendar.
 
 ## What happens when it runs
 
 1. The chatbot opens a terminal conversation and stays available until the customer types `done`, `exit`, or `quit` (or presses Ctrl+C).
-2. Simple greetings receive a friendly deterministic response without using Gemini. Clear Saturday booking questions also use local approved data directly, so temporary Gemini outages do not block price and slot-status answers. Other messages are sent to Gemini with the FitDesk knowledge base, approved studio data, and up to the 10 most recent conversation turns.
+2. Simple greetings and recognized package-price or Saturday-availability questions receive deterministic replies without using Gemini. Follow-ups such as “what other time is available?” and “how much is it?” use earlier customer messages. Other messages are sent to Gemini with the FitDesk knowledge base, approved studio data, and up to the 10 most recent conversation turns.
 3. The application checks requested prices and Saturday times against `data/fitdesk_data.json`; it does not rely on model-generated prices or availability.
-4. Unsupported facts use: `I'll check with the owner and come back to you.` Off-topic messages get a fixed FitDesk-only reply.
+4. Unsupported package prices and other unknown facts use: `I'll check with the owner and come back to you.` An unlisted Saturday time is explicitly labeled as unlisted; off-topic messages get a fixed FitDesk-only reply.
 5. Booking requests are not submitted. The chatbot answers requested package prices and Saturday times from approved data (including stating when a time is not listed), then tells the customer to contact FitDesk staff to confirm current availability and arrange a booking.
 6. Each response or failure is recorded in `status_log.json` with a conversation ID. A `responded_in_chat` status means only that the reply was shown in the local terminal; no external message was sent.
 
@@ -129,6 +129,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 |---|---|
 | `__main__.py` | Makes `python -m fitdesk` start the command-line application. |
 | `cli.py` | Runs the continuous terminal chat, handles exit commands and conversation context, classifies messages, grounds replies, and logs each turn. It also retains `process_enquiry` for the separate staff-reviewed assessment workflow. |
+| `chat_responses.py` | Answers recognized package-price and Saturday-availability requests and follow-ups from approved data, without relying on Gemini. |
 | `config.py` | Loads the Gemini key, selected model, and request timeout from `.env`. Keeping configuration here avoids embedding machine-specific values in code. |
 | `ai_client.py` | Provides the single Gemini analysis entry point and reports the non-secret provider/model values written to the status log. |
 | `gemini_client.py` | Sends Gemini requests using its structured JSON response schema and compact output limit, handles service errors, and validates returned analysis. |
@@ -177,13 +178,14 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 - Requested packages and Saturday times are checked against the customer's message and approved local data.
 - Missing or unsupported facts trigger the owner-check phrase instead of a guessed answer.
 - AI, data, and log errors fail closed: they do not become successful/sent outcomes.
-- Staff approval is always required, even if the model says approval is unnecessary.
+- The retained `process_enquiry` assessment helper requires staff approval; continuous chatbot replies are displayed directly and do not require approval.
 - The log is a local audit record. It is not a messaging service or proof that a customer received a reply.
 
 ## What doesn't work yet
 
 - One local terminal conversation runs at a time; each new run starts a new conversation.
 - English enquiries are the supported and tested language.
+- **Known response issue:** booking intent is not recognized or acknowledged consistently for every wording. Some replies may not clearly respond to the customer's request to book, even though package-price and Saturday-availability answers generally work. The chatbot cannot create or confirm bookings; customers must contact FitDesk staff.
 - Availability is sample/local data and is not refreshed from a live booking system.
 - The terminal chatbot is local only; it is not deployed for public customers and does not send replies externally.
 - The application does not make bookings, process payments, or integrate with WhatsApp/email.

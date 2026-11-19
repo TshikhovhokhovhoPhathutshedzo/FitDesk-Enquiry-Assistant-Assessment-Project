@@ -7,10 +7,11 @@ from uuid import uuid4
 
 from .approval import ApprovalCancelled, get_staff_decision
 from .ai_client import analyze_enquiry, get_provider_metadata
+from .chat_responses import build_local_response
 from .config import RATE_LIMIT_CLIENT_ID
 from .drafter import draft_reply
 from .gemini_client import AIServiceError, InvalidJSONError
-from .lookup import DataFileError, extract_known_facts, load_data
+from .lookup import DataFileError, extract_known_facts
 from .knowledge_base import load_knowledge_base
 from .rate_limiter import RATE_LIMITER, RateLimitExceeded, RateLimiterUnavailable
 from .status_log import StatusLogError, append_status_entry
@@ -155,26 +156,11 @@ def process_enquiry(
 
 
 _EXIT_COMMANDS = {"done", "exit", "quit"}
-_BOOKING_PATTERN = re.compile(r"\b(book|booking|reserve|reservation|appointment)\b", re.I)
-_FITDESK_BOOKING_PATTERN = re.compile(
-    r"\b(book|booking|reserve|reservation|appointment)\b"
-    r"(?:(?![.!?]).){0,80}\b(?:session|training)\b|"
-    r"\b(?:session|training)\b"
-    r"(?:(?![.!?]).){0,80}\b(book|booking|reserve|reservation|appointment)\b",
-    re.I,
-)
 _GREETING_PATTERN = re.compile(
     r"^(?:hi+|hello+|hey+|good morning|good afternoon|good evening|"
     r"how are you|how's it going|how are you doing|what's up)"
     r"(?:[,\s]+fitdesk(?:\s+assistant)?)?"
     r"(?:[,\s]+(?:how are you(?: doing)?|how's it going|what's up))?[.!? ]*$",
-    re.I,
-)
-_BOOKING_TIME_PATTERN = re.compile(
-    r"(?:(?P<prefix>\b(?:at|around|by|for|saturday)\s+)|\b)"
-    r"(?P<hour>\d{1,2})(?::(?P<minute>[0-5]\d))?"
-    r"\s*(?P<meridiem>a\.?m\.?|p\.?m\.?)?\b"
-    r"(?!\s*(?:sessions?|packs?)\b)",
     re.I,
 )
 _FOLLOW_UP_PATTERN = re.compile(
@@ -192,69 +178,12 @@ def _is_greeting(message: str) -> bool:
 def _lookup_message(message: str, history: list[dict[str, str]]) -> str:
     if len(message.split()) > 10 or not _FOLLOW_UP_PATTERN.search(message):
         return message
-    previous_customer_message = next(
-        (item["content"] for item in reversed(history) if item.get("role") == "user"),
-        "",
-    )
-    return f"{previous_customer_message} {message}".strip()
-
-
-def _requested_booking_times(message: str) -> list[str]:
-    requested_times = []
-    for match in _BOOKING_TIME_PATTERN.finditer(message):
-        minute = match.group("minute")
-        meridiem = match.group("meridiem")
-        if not (match.group("prefix") or minute or meridiem):
-            continue
-
-        hour = int(match.group("hour"))
-        if meridiem:
-            if not 1 <= hour <= 12:
-                continue
-            normalized_meridiem = meridiem.casefold().replace(".", "")
-            if normalized_meridiem == "pm" and hour != 12:
-                hour += 12
-            elif normalized_meridiem == "am" and hour == 12:
-                hour = 0
-        elif hour > 23:
-            continue
-
-        requested_time = f"{hour:02d}:{int(minute or '0'):02d}"
-        if requested_time not in requested_times:
-            requested_times.append(requested_time)
-    return requested_times
-
-
-def _booking_reply(message: str, facts: dict) -> str:
-    availability = load_data()["saturday_availability"]
-    requested_times = _requested_booking_times(message)
-    if requested_times:
-        slots = "; ".join(
-            (
-                f"Saturday {time}: {availability[time].casefold()}"
-                if time in availability
-                else f"Saturday {time}: not listed in the approved schedule"
-            )
-            for time in requested_times
-        )
-    else:
-        slots = "; ".join(
-            f"Saturday {time}: {status.casefold()}"
-            for time, status in availability.items()
-        )
-    sentences = [
-        f"The {package} is {price}."
-        for package, price in facts.get("prices", {}).items()
+    previous_customer_messages = [
+        item["content"]
+        for item in history
+        if item.get("role") == "user" and item.get("content", "").strip()
     ]
-    sentences.append(f"The approved Saturday schedule lists: {slots}.")
-    if re.search(r"\b(?:how much|price|cost)\b", message, re.I) and not facts.get("prices"):
-        sentences.append("I'll check with the owner and come back to you.")
-    sentences.append(
-        "I can't place, reserve, or confirm a booking here, and this schedule isn't live. "
-        "Please contact FitDesk staff to check current availability and arrange "
-        "a booking."
-    )
-    return " ".join(sentences)
+    return " ".join([*previous_customer_messages, message]).strip()
 
 
 def _chat_failure(
@@ -307,15 +236,11 @@ def process_chat_turn(
             related = True
             intent = "other"
             ai_used = False
-        elif _FITDESK_BOOKING_PATTERN.search(message):
-            facts = extract_known_facts(None, _lookup_message(message, history))
-            reply = _booking_reply(message, facts)
-            escalation = bool(
-                re.search(r"\b(?:how much|price|cost)\b", message, re.I)
-                and not facts.get("prices")
-            )
+        elif local_response := build_local_response(message, history):
+            reply = str(local_response["reply"])
+            escalation = bool(local_response["escalation"])
             related = True
-            intent = "pricing_and_availability" if facts.get("prices") else "availability"
+            intent = str(local_response["intent"])
             ai_used = False
         else:
             ai_used = True
@@ -325,13 +250,6 @@ def process_chat_turn(
             if not related:
                 reply = load_knowledge_base()["off_topic_reply"]
                 escalation = False
-            elif _BOOKING_PATTERN.search(message):
-                facts = extract_known_facts(analysis, _lookup_message(message, history))
-                reply = _booking_reply(message, facts)
-                escalation = bool(
-                    re.search(r"\b(?:how much|price|cost)\b", message, re.I)
-                    and not facts.get("prices")
-                )
             else:
                 facts = extract_known_facts(analysis, _lookup_message(message, history))
                 reply, escalation = draft_reply(analysis, facts)

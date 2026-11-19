@@ -8,9 +8,9 @@
 
 ## 1. Executive summary
 
-FitDesk Enquiry Assistant now runs as a continuous local terminal chatbot. It handles multiple customer turns until the customer exits, uses recent chat history for follow-ups, checks prices and Saturday availability against local approved data, and records the response for each turn. The earlier staff-reviewed enquiry helper remains for the assessment regression workflow but is not the default chatbot path.
+FitDesk Enquiry Assistant now runs as a continuous local terminal chatbot. It handles multiple customer turns until the customer exits, uses customer chat history for deterministic price and availability follow-ups, checks those facts against local approved data, and records the response for each turn. The earlier staff-reviewed enquiry helper remains for the assessment regression workflow but is not the default chatbot path.
 
-The AI is used to classify messages and understand follow-ups, not as the source of prices or availability. Code resolves facts from `data/fitdesk_data.json`; unsupported questions use the owner-check escalation phrase. Simple greetings receive a friendly local response without a Gemini call. Chatbot replies are displayed directly in the terminal without a staff approval prompt, but they are not sent externally.
+Gemini classifies requests not handled by deterministic rules; it is never the source of prices or availability. A local response layer handles recognized price and Saturday availability questions, including follow-ups, from `data/fitdesk_data.json`. Unsupported prices and other unknown facts use the owner-check escalation phrase; unlisted Saturday times are explicitly identified as unlisted. Simple greetings also receive a friendly local response without a Gemini call. Chatbot replies are displayed directly in the terminal without a staff approval prompt, but they are not sent externally.
 
 The current application uses Gemini only. Its default model is `gemini-3.5-flash-lite`, Google's cost-efficient Flash-Lite option, and generated output is capped at 256 tokens. It also limits requests to 10 per client and 30 total per rolling 60 seconds using an SQLite-backed limiter shared across processes that use the same local database file. Earlier project iterations experimented with DeepSeek, OpenRouter, and Groq; those integrations have been removed. The historical status-log report below preserves those past experiments and should not be read as current provider support.
 
@@ -20,6 +20,7 @@ The current application uses Gemini only. Its default model is `gemini-3.5-flash
 
 - Continuous terminal conversation, with `done`, `exit`, and `quit` commands.
 - Recent conversation context for Gemini classification of non-greeting turns.
+- Deterministic local handling of supported package-price and Saturday-availability questions, including customer-context follow-ups.
 - Friendly greeting handling without a Gemini call.
 - Validated JSON classification of intent, requested packages, requested Saturday times, and other details.
 - Approved price and Saturday availability lookup from a local JSON file.
@@ -43,10 +44,10 @@ The current application uses Gemini only. Its default model is `gemini-3.5-flash
 
 1. `src/fitdesk/__main__.py` starts the continuous terminal chat.
 2. `src/fitdesk/cli.py` manages the conversation, exit commands, and recent turn history.
-3. Simple greetings and clear Saturday booking questions are answered from local rules/data. Other messages pass through the rate limiter and Gemini structured classifier.
-4. Gemini receives the FitDesk knowledge base, approved business data, and up to 10 recent turns.
-5. `src/fitdesk/lookup.py` checks the current request—and customer-provided context when a short follow-up refers back—against `data/fitdesk_data.json`.
-6. `src/fitdesk/drafter.py` builds replies from approved facts; booking requests include requested package prices and relevant sample availability, plus a fixed no-booking disclosure. Clear Saturday booking queries work during a Gemini outage because they use local approved data directly.
+3. Simple greetings and recognized price or Saturday availability questions are answered from local rules/data. The local response layer uses previous customer messages for follow-ups and skips assistant messages.
+4. Other messages pass through the rate limiter and Gemini structured classifier, which receives the FitDesk knowledge base, approved business data, and up to 10 recent turns.
+5. `src/fitdesk/chat_responses.py` resolves supported price and availability questions from `data/fitdesk_data.json`; unsupported weekdays are left to the existing classification and escalation flow.
+6. `src/fitdesk/lookup.py` and `src/fitdesk/drafter.py` handle approved facts and replies for the remaining classified requests. Price and Saturday availability follow-ups do not depend on Gemini being available.
 7. `src/fitdesk/status_log.py` records each local response or failure under a conversation ID in Git-ignored `status_log.json`.
 
 `src/fitdesk/gemini_client.py` uses Gemini's SDK-specific structured-output integration. The app does not load or call other AI providers.
@@ -139,11 +140,14 @@ Run the offline suite from the repository root:
 python -m pytest -v
 ```
 
-The latest verified automated run was **60 passed in 27.33 seconds**. The suite uses mocked Gemini calls, so it does not need API credentials or make network calls. It covers:
+The latest verified run was **65 passed in 16.67 seconds**.
+
+The automated suite uses mocked Gemini calls, so it does not need API credentials or make network calls. It covers:
 
 - Gemini structured schema, compact 256-token output budget, timeout settings, and malformed/service responses.
 - Gemini model metadata on successful and failed enquiry records.
 - Pricing and availability lookups against approved data, including unsupported requests and prompt-injection-style substitutions.
+- Multi-turn local availability and pricing follow-ups, package-menu responses to ambiguous/typoed pricing questions, and protection against using Saturday facts for unsupported weekdays.
 - Staff approval, rejection, cancellation, and invalid responses.
 - Missing/corrupt data, malformed AI responses, invalid UTF-8, concurrent status-log updates, and fail-closed behavior.
 
