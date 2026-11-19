@@ -10,6 +10,7 @@ def show_customer_message(message: str) -> None:
 
 def show_understood_analysis(analysis) -> None:
     payload = {
+        "is_fitdesk_related": analysis.is_fitdesk_related,
         "intent": analysis.intent,
         "details": analysis.details,
         "requires_human_approval": analysis.requires_human_approval,

@@ -13,6 +13,7 @@ class Intent(str, Enum):
 class EnquiryAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    is_fitdesk_related: bool
     intent: Intent
     details: str
     packages: list[str] = Field(default_factory=list)

@@ -22,6 +22,7 @@ from fitdesk import status_log
 
 def _analysis(**kwargs):
     defaults = {
+        "is_fitdesk_related": True,
         "intent": Intent.PRICING_AND_AVAILABILITY,
         "details": "",
         "packages": ["12 sessions"],
@@ -39,6 +40,59 @@ def test_normal_enquiry_is_sent(monkeypatch):
     assert "R1,680" in result["draft"]
     assert "Saturday 09:00 is available" in result["draft"]
     assert "Saturday 10:00 is full" in result["draft"]
+
+
+def test_off_topic_enquiry_gets_fixed_reply_and_still_requires_approval(monkeypatch):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message: _analysis(is_fitdesk_related=False),
+    )
+    decisions = []
+
+    result = process_enquiry(
+        "Can you help me write a poem?",
+        lambda: decisions.append("asked") or "y",
+    )
+
+    assert result["status"] == "sent"
+    assert result["draft"] == (
+        "I can only help with questions about FitDesk, including its training "
+        "packages and Saturday availability."
+    )
+    assert decisions == ["asked"]
+    entry = status_log.read_log()[0]
+    assert entry["is_fitdesk_related"] is False
+    assert entry["status"] == "sent"
+
+
+def test_missing_knowledge_base_fails_closed_for_off_topic_enquiry(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message: _analysis(is_fitdesk_related=False),
+    )
+    monkeypatch.setattr(
+        "fitdesk.knowledge_base.KNOWLEDGE_BASE_FILE",
+        tmp_path / "missing.json",
+    )
+    result = process_enquiry("Tell me a joke.", lambda: "y")
+    assert result["status"] == "failed_data"
+    assert result["draft"] == ""
+
+
+def test_corrupt_knowledge_base_fails_closed_for_off_topic_enquiry(monkeypatch, tmp_path):
+    knowledge_file = tmp_path / "knowledge_base.json"
+    knowledge_file.write_text("{broken", encoding="utf-8")
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message: _analysis(is_fitdesk_related=False),
+    )
+    monkeypatch.setattr(
+        "fitdesk.knowledge_base.KNOWLEDGE_BASE_FILE",
+        knowledge_file,
+    )
+    result = process_enquiry("Tell me a joke.", lambda: "y")
+    assert result["status"] == "failed_data"
+    assert result["draft"] == ""
 
 
 def test_twelve_wording_uses_the_approved_twelve_session_price(monkeypatch):
@@ -327,12 +381,16 @@ def test_ai_service_failure_is_recorded(monkeypatch):
     assert entry["reason"] == "Gemini service returned HTTP 503."
 
 
-def test_rate_limited_enquiry_is_logged_without_calling_ai(monkeypatch):
+def test_rate_limited_enquiry_is_logged_without_calling_ai(monkeypatch, tmp_path):
     from fitdesk.rate_limiter import RateLimiter
 
     monkeypatch.setattr(
         "fitdesk.cli.RATE_LIMITER",
-        RateLimiter(per_client_limit=1, total_limit=3),
+        RateLimiter(
+            per_client_limit=1,
+            total_limit=3,
+            database_path=tmp_path / "rate_limit.sqlite3",
+        ),
     )
     ai_calls = []
     monkeypatch.setattr(
@@ -402,6 +460,7 @@ def test_gemini_request_uses_structured_schema_and_timeout(monkeypatch):
             return SimpleNamespace(
                 text=json.dumps(
                     {
+                        "is_fitdesk_related": True,
                         "intent": "pricing",
                         "details": "12 sessions",
                         "packages": ["12 sessions"],
@@ -421,6 +480,7 @@ def test_gemini_request_uses_structured_schema_and_timeout(monkeypatch):
     result = gemini_client.analyze_enquiry("How much is 12 sessions?")
 
     assert result.intent == Intent.PRICING
+    assert result.is_fitdesk_related is True
     assert calls["client"]["http_options"].timeout == 20_000
     config = calls["request"]["config"]
     assert config.response_mime_type == "application/json"
@@ -435,6 +495,11 @@ def test_gemini_request_uses_structured_schema_and_timeout(monkeypatch):
     ]
     assert "additionalProperties" not in schema
     assert "$defs" not in schema
+    assert schema["properties"]["is_fitdesk_related"]["type"] == "boolean"
+    prompt = calls["request"]["contents"]
+    assert "FitDesk knowledge base and approved studio data" in prompt
+    assert "I can only help with questions about FitDesk" in prompt
+    assert "R1,680" in prompt
 
 
 @pytest.mark.parametrize(

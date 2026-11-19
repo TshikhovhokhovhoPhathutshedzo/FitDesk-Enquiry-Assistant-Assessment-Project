@@ -23,6 +23,8 @@
 - FR-07: Partial answers must combine known facts with the escalation phrase when a fact is missing, and the record must be flagged as escalation.
 - FR-08: Each enquiry that attempts an AI request must log the Gemini provider and configured model name, without logging the API key.
 - FR-09: The system must enforce a rolling rate limit of 10 enquiries per client and 30 enquiries in total per 60 seconds before calling Gemini. Requests over either limit must be logged as rate_limited and must not call the AI service.
+- FR-10: Every Gemini classification request must include the validated FitDesk knowledge base and approved studio data. The structured response must classify whether the enquiry is FitDesk-related.
+- FR-11: For an off-topic enquiry, the system must draft the fixed FitDesk-only reply from the knowledge base rather than answer the unrelated request. Staff approval remains mandatory, and the scope classification must be included in the status log.
 
 ## Non-functional requirements
 - NFR-01 Security: Keep the Gemini API key only in the Git-ignored .env file; .env.example must contain an empty key placeholder.
@@ -46,6 +48,8 @@
 - Given staff input n, when approval is refused, then the status is rejected_by_staff.
 - Given a valid draft and staff input y, when approval is accepted, then the status is sent.
 - Given a client or the application exceeds its rolling request allowance, when another enquiry is submitted, then it is logged as rate_limited without calling Gemini.
+- Given a message unrelated to FitDesk, when Gemini classifies it as off-topic, then the system drafts the fixed scope reply and still requires staff approval.
+- Given the knowledge base is missing or invalid, when an enquiry is processed, then the system fails closed and never records it as sent.
 
 ## Ambiguities and assumptions
 - What is unclear: whether enquiries about other weekdays or class schedules should be answered. What I'd ask the owner: “Should the assistant handle class schedules beyond Saturday availability?” [ASSUMPTION] Until data is added, those questions escalate to the owner.

@@ -35,11 +35,14 @@
 | RT-32 | FR-09, NFR-02 | Concurrent shared request burst | Submit concurrent requests from multiple clients | Never admit more than 30 requests in one rolling 60-second window | Covered by thread-pool rate-limiter test | Pass |
 | RT-33 | FR-09 | Separate application processes (test shared cap: 20) | Submit requests concurrently from three processes using the same SQLite file | The configured shared cap is enforced across processes | Covered by subprocess rate-limiter test | Pass |
 | RT-34 | NFR-02 | Rate-limit database failure | Make the configured SQLite database path unavailable | Fail closed with `failed_rate_limiter`; do not call Gemini | Covered by SQLite and CLI fail-closed tests | Pass |
+| RT-35 | FR-10 | Gemini classification context | Inspect the mocked request prompt | Include the knowledge base and approved prices/availability; require scope classification in the structured schema | Passed in final `pytest -q` run | Pass |
+| RT-36 | FR-11 | Off-topic enquiry | Mock an unrelated classification and approve the draft | Use the fixed FitDesk-only reply, retain staff approval, and log `is_fitdesk_related: false` | Passed in final `pytest -q` run | Pass |
+| RT-37 | FR-10, FR-11 | Missing or corrupt knowledge base | Remove or corrupt the knowledge-base file | Fail closed with `failed_data`; never produce an approved/sent result | Passed in final `pytest -q` run | Pass |
 
 ## Real pytest run
 Fresh venv command: `.venv-validation\Scripts\python.exe -m pytest -q`
 Latest offline run used mocked Gemini calls and made no network requests:
 ```
-============================= 45 passed in 14.41s =============================
+============================= 48 passed =============================
 ```
 Historical provider experiments are summarized in [PROJECT_REPORT.md](./PROJECT_REPORT.md). The current application is Gemini-only.

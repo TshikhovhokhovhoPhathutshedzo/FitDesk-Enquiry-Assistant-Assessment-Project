@@ -11,10 +11,10 @@ A Python command-line assistant that helps FitDesk staff prepare replies to cust
 ## What happens when it runs
 
 1. The customer enters an enquiry in the terminal.
-2. Gemini classifies the request into the expected fields.
+2. Gemini receives the FitDesk scope rules in `data/knowledge_base.json` and approved prices/availability in `data/fitdesk_data.json`, then classifies the request as FitDesk-related or off-topic using a validated JSON response.
 3. The application checks requested packages and times against `data/fitdesk_data.json`.
 4. It builds a reply from approved facts. If a fact is missing or unsupported, it uses: `I'll check with the owner and come back to you.`
-5. Staff reviews the draft and enters `y` to approve or `n` to reject. This approval is always required.
+5. For an off-topic request, it drafts the fixed FitDesk-only reply from the knowledge base instead of answering the unrelated request. Staff reviews either kind of draft and enters `y` to approve or `n` to reject. This approval is always required.
 6. The outcome is recorded in `status_log.json`. Failed requests and rejected drafts are not recorded as sent.
 
 Enquiries are rate limited before any Gemini request: each client can submit up to 10 enquiries in a rolling 60-second window, with a shared application limit of 30 per 60 seconds. This supports three clients at 10 enquiries per minute each and prevents one client from using the whole allowance. A rejected request is logged as `rate_limited` and does not call Gemini. SQLite stores the rolling counters in the ignored `.rate_limit.sqlite3` file so concurrent processes on the same machine share the limit.
@@ -48,7 +48,7 @@ REQUEST_TIMEOUT_SECONDS=20
 FITDESK_CLIENT_ID=local
 ```
 
-The default model is `gemini-3.5-flash-lite`, Google's cost-efficient Flash-Lite option. The request also caps output at 256 tokens to keep classification responses compact. Model availability, rates, and free-tier limits can change; see [Google's model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) and [pricing](https://ai.google.dev/gemini-api/docs/pricing). Create a key in [Google AI Studio](https://aistudio.google.com/). Keep the real key only in `.env`; `.env.example` contains an empty placeholder and `.env` is ignored by Git.
+The default model is `gemini-3.5-flash-lite`, Google's current Flash-Lite option for fast, cost-efficient lightweight tasks. The request also caps output at 256 tokens to keep classification responses compact. Model availability, rates, and free-tier limits can change; see [Google's model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite) and [pricing](https://ai.google.dev/gemini-api/docs/pricing). Create a key in [Google AI Studio](https://aistudio.google.com/). Keep the real key only in `.env`; `.env.example` contains an empty placeholder and `.env` is ignored by Git.
 
 ## Run the application
 
@@ -80,14 +80,15 @@ Install dependencies as described above, then run:
 python -m pytest
 ```
 
-The tests mock Gemini calls, so they do not need an API key, internet access, or a paid AI request. They cover request configuration, response validation, approved-data lookups, draft generation, staff approval, error handling, and status logging.
+The tests mock Gemini calls, so they do not need an API key, internet access, or a paid AI request. They cover knowledge-base context and off-topic handling, request configuration, response validation, approved-data lookups, draft generation, staff approval, error handling, and status logging.
 
 ## Project structure
 
 ```text
 .
 ├── data/
-│   └── fitdesk_data.json
+│   ├── fitdesk_data.json
+│   └── knowledge_base.json
 ├── docs/
 │   ├── RAPLH_LOG.md
 │   ├── PROJECT_REPORT.md
@@ -103,6 +104,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 │       ├── config.py
 │       ├── drafter.py
 │       ├── gemini_client.py
+│       ├── knowledge_base.py
 │       ├── rate_limiter.py
 │       ├── lookup.py
 │       ├── models.py
@@ -130,6 +132,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 | `config.py` | Loads the Gemini key, selected model, and request timeout from `.env`. Keeping configuration here avoids embedding machine-specific values in code. |
 | `ai_client.py` | Provides the single Gemini analysis entry point and reports the non-secret provider/model values written to the status log. |
 | `gemini_client.py` | Sends Gemini requests using its structured JSON response schema and compact output limit, handles service errors, and validates returned analysis. |
+| `knowledge_base.py` | Loads and validates the FitDesk scope rules and combines them with approved studio facts for Gemini context. Invalid or missing knowledge-base data fails closed. |
 | `models.py` | Defines the allowed enquiry intents and the Pydantic `EnquiryAnalysis` model. Validation prevents unexpected AI output from flowing into later steps. |
 | `rate_limiter.py` | Applies per-client and shared rolling-window request limits before Gemini is called. SQLite transactions make checks atomic across concurrent processes using the same local database file. The CLI client ID is configurable with `FITDESK_CLIENT_ID`; this value identifies a client but does not authenticate it. |
 | `lookup.py` | Loads and validates approved studio data, checks what the customer actually requested, and returns matching facts. This is the boundary that prevents the model from inventing or substituting prices and availability. |
@@ -144,6 +147,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 | Path | Purpose and importance |
 |---|---|
 | `data/fitdesk_data.json` | The approved source of package prices and Saturday slot statuses. Change this file when the studio's confirmed facts change; replies should use these facts rather than model-generated claims. |
+| `data/knowledge_base.json` | Defines FitDesk's supported enquiry topics, response rules, and fixed off-topic reply. Gemini receives it with the approved studio data for each classification request. |
 | `tests/conftest.py` | Adds the `src` directory to the test import path and redirects status logs to a temporary directory, keeping tests isolated from real runtime data. |
 | `tests/test_cli.py` | Exercises the application workflow and Gemini request setup using mocked AI responses; tests do not make real API calls. |
 | `tests/test_rate_limiter.py` | Verifies per-client and shared rolling limits, expiry, and thread safety under concurrent requests. |
@@ -169,6 +173,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 ## Design and safety boundaries
 
 - The AI provider interprets the enquiry; it does not supply the prices or availability used in the reply.
+- Gemini receives the local knowledge base and approved studio data on each classification request. Scope classification is model-assisted; the off-topic reply itself is deterministic, and missing or invalid local knowledge data fails closed.
 - Requested packages and Saturday times are checked against the customer's message and approved local data.
 - Missing or unsupported facts trigger the owner-check phrase instead of a guessed answer.
 - AI, data, and log errors fail closed: they do not become successful/sent outcomes.

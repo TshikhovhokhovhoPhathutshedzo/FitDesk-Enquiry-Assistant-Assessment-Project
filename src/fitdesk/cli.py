@@ -9,6 +9,7 @@ from .config import RATE_LIMIT_CLIENT_ID
 from .drafter import draft_reply
 from .gemini_client import AIServiceError, InvalidJSONError
 from .lookup import DataFileError, extract_known_facts
+from .knowledge_base import load_knowledge_base
 from .rate_limiter import RATE_LIMITER, RateLimitExceeded, RateLimiterUnavailable
 from .status_log import StatusLogError, append_status_entry
 from .ui import show_customer_message, show_draft_reply, show_error, show_understood_analysis
@@ -66,6 +67,8 @@ def process_enquiry(
         return _failure_result(message, "rate_limited", str(exc), ai_metadata)
     except RateLimiterUnavailable as exc:
         return _failure_result(message, "failed_rate_limiter", str(exc), ai_metadata)
+    except DataFileError as exc:
+        return _failure_result(message, "failed_data", str(exc), ai_metadata)
     except KeyboardInterrupt:
         return _failure_result(
             message,
@@ -79,19 +82,26 @@ def process_enquiry(
         return _failure_result(message, "failed_ai_service", str(exc), ai_metadata)
 
     show_understood_analysis(analysis)
-    try:
-        facts = extract_known_facts(analysis, message)
-    except DataFileError as exc:
-        return _failure_result(message, "failed_data", str(exc), ai_metadata)
-    except (OSError, json.JSONDecodeError) as exc:
-        return _failure_result(
-            message,
-            "failed_data",
-            f"Could not read approved FitDesk data: {exc}",
-            ai_metadata,
-        )
+    if analysis.is_fitdesk_related:
+        try:
+            facts = extract_known_facts(analysis, message)
+        except DataFileError as exc:
+            return _failure_result(message, "failed_data", str(exc), ai_metadata)
+        except (OSError, json.JSONDecodeError) as exc:
+            return _failure_result(
+                message,
+                "failed_data",
+                f"Could not read approved FitDesk data: {exc}",
+                ai_metadata,
+            )
+        draft_text, escalation = draft_reply(analysis, facts)
+    else:
+        try:
+            draft_text = load_knowledge_base()["off_topic_reply"]
+        except DataFileError as exc:
+            return _failure_result(message, "failed_data", str(exc), ai_metadata)
+        escalation = False
 
-    draft_text, escalation = draft_reply(analysis, facts)
     show_draft_reply(draft_text)
 
     try:
@@ -101,6 +111,7 @@ def process_enquiry(
             {
                 "original_message": message,
                 "intent": analysis.intent.value,
+                "is_fitdesk_related": analysis.is_fitdesk_related,
                 "draft_text": draft_text,
                 "status": "failed_cancelled",
                 "escalation": escalation,
@@ -124,6 +135,7 @@ def process_enquiry(
         {
             "original_message": message,
             "intent": analysis.intent.value,
+            "is_fitdesk_related": analysis.is_fitdesk_related,
             "draft_text": draft_text,
             "status": status,
             "escalation": escalation,
@@ -162,7 +174,7 @@ def main(argv=None):
         messages = {
             "failed_ai_service": "AI service unavailable. Check the API key or connection; nothing was sent.",
             "failed_invalid_json": "The AI response was invalid. Nothing was sent.",
-            "failed_data": "Approved studio data could not be read. Nothing was sent.",
+            "failed_data": "Approved FitDesk data or knowledge base could not be read. Nothing was sent.",
             "failed_status_log": "The result could not be recorded. Nothing was sent.",
             "failed_cancelled": "Enquiry processing was cancelled. Nothing was sent.",
             "failed_approval": "Staff approval was not confirmed. Nothing was sent.",
