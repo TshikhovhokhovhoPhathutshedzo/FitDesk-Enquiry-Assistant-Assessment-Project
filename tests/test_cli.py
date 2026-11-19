@@ -327,6 +327,28 @@ def test_ai_service_failure_is_recorded(monkeypatch):
     assert entry["reason"] == "Gemini service returned HTTP 503."
 
 
+def test_rate_limited_enquiry_is_logged_without_calling_ai(monkeypatch):
+    from fitdesk.rate_limiter import RateLimiter
+
+    monkeypatch.setattr(
+        "fitdesk.cli.RATE_LIMITER",
+        RateLimiter(per_client_limit=1, total_limit=3),
+    )
+    ai_calls = []
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message: ai_calls.append(message) or _analysis(),
+    )
+
+    first = process_enquiry("first enquiry", lambda: "n", client_id="staff-1")
+    second = process_enquiry("second enquiry", lambda: "n", client_id="staff-1")
+
+    assert first["status"] == "rejected_by_staff"
+    assert second["status"] == "rate_limited"
+    assert ai_calls == ["first enquiry"]
+    assert status_log.read_log()[1]["status"] == "rate_limited"
+
+
 def test_approved_result_records_provider_and_model(monkeypatch):
     monkeypatch.setattr("fitdesk.cli.analyze_enquiry", lambda message: _analysis())
     monkeypatch.setattr(

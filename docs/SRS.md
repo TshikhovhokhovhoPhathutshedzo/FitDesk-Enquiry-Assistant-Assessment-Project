@@ -22,11 +22,13 @@
 - FR-06: The clerk must never record a sent status when the AI service fails, JSON is invalid, or the answer is unapproved.
 - FR-07: Partial answers must combine known facts with the escalation phrase when a fact is missing, and the record must be flagged as escalation.
 - FR-08: Each enquiry that attempts an AI request must log the Gemini provider and configured model name, without logging the API key.
+- FR-09: The system must enforce a rolling rate limit of 10 enquiries per client and 30 enquiries in total per 60 seconds before calling Gemini. Requests over either limit must be logged as rate_limited and must not call the AI service.
 
 ## Non-functional requirements
 - NFR-01 Security: .env holds the Gemini API key, and secret scanning checks stop accidental commit leaks.
 - NFR-02 Reliability: failed AI calls, malformed output, and timeouts fail closed and leave a non-sent log entry.
 - NFR-03 Cost and simplicity: the project keeps a single data source and deterministic templates to reduce model cost and keep behaviour explainable.
+- NFR-04 Concurrency: rate-limit checks must be thread-safe within one application process. A multi-process or multi-host deployment must use a shared rate-limit store.
 
 ## Data inputs / outputs
 - Input: customer message, data/fitdesk_data.json, Gemini .env configuration, staff approval response.
@@ -44,6 +46,7 @@
 - Given an invalid response from any configured AI provider, when JSON validation fails, then the status is not sent.
 - Given staff input n, when approval is refused, then the status is rejected_by_staff.
 - Given a valid draft and staff input y, when approval is accepted, then the status is sent.
+- Given a client or the application exceeds its rolling request allowance, when another enquiry is submitted, then it is logged as rate_limited without calling Gemini.
 
 ## Ambiguities and assumptions
 - What is unclear: whether enquiries about other weekdays or class schedules should be answered. What I'd ask the owner: “Should the assistant handle class schedules beyond Saturday availability?” [ASSUMPTION] Until data is added, those questions escalate to the owner.

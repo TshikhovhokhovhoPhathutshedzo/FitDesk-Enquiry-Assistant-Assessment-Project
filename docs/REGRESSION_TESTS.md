@@ -31,11 +31,13 @@
 | RT-27 | FR-05, FR-06 | Status log contains invalid UTF-8 | Write invalid UTF-8 bytes to the log | Fail closed and preserve the original file | Passed in final `pytest -v` run | Pass |
 | RT-29 | FR-08 | Gemini request success or failure | Mock an approved response and a Gemini service error | Log Gemini and configured model on both outcomes without the API key | Passed in final `pytest -v` run | Pass |
 | RT-30 | FR-06 | Gemini output budget | Inspect the mocked Gemini request configuration | Cap model output at 256 tokens | Passed in final `pytest -v` run | Pass |
+| RT-31 | FR-09 | Per-client request burst | Exceed one client's configured rolling-window limit | Record `rate_limited` and do not call Gemini | Covered by `tests/test_rate_limiter.py` and CLI integration test | Pass |
+| RT-32 | FR-09, NFR-04 | Concurrent shared request burst | Submit concurrent requests from multiple clients | Never admit more than 30 requests in one rolling 60-second window | Covered by thread-pool rate-limiter test | Pass |
 
 ## Real pytest run
 Fresh venv command: `.venv-validation\Scripts\python.exe -m pytest -v`
 Latest offline run used mocked Gemini calls and made no network requests:
 ```
-============================= 37 passed in 4.90s =============================
+============================= 42 passed in 5.35s =============================
 ```
 Historical provider experiments are summarized in [PROJECT_REPORT.md](./PROJECT_REPORT.md). The current application is Gemini-only.

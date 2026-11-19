@@ -8,6 +8,7 @@ from .ai_client import analyze_enquiry, get_provider_metadata
 from .drafter import draft_reply
 from .gemini_client import AIServiceError, InvalidJSONError
 from .lookup import DataFileError, extract_known_facts
+from .rate_limiter import RATE_LIMITER, RateLimitExceeded
 from .status_log import StatusLogError, append_status_entry
 from .ui import show_customer_message, show_draft_reply, show_error, show_understood_analysis
 
@@ -45,7 +46,11 @@ def _failure_result(
     )
 
 
-def process_enquiry(message: str, staff_decision_func=get_staff_decision):
+def process_enquiry(
+    message: str,
+    staff_decision_func=get_staff_decision,
+    client_id: str = "local",
+):
     message = message.strip()
     if not message:
         return _failure_result("", "failed_empty_input", "Customer message was empty.")
@@ -54,7 +59,10 @@ def process_enquiry(message: str, staff_decision_func=get_staff_decision):
     ai_metadata = get_provider_metadata()
 
     try:
+        RATE_LIMITER.check(client_id)
         analysis = analyze_enquiry(message)
+    except RateLimitExceeded as exc:
+        return _failure_result(message, "rate_limited", str(exc), ai_metadata)
     except KeyboardInterrupt:
         return _failure_result(
             message,
@@ -156,6 +164,7 @@ def main(argv=None):
             "failed_cancelled": "Enquiry processing was cancelled. Nothing was sent.",
             "failed_approval": "Staff approval was not confirmed. Nothing was sent.",
             "rejected_by_staff": "Staff rejected the draft. Nothing was sent.",
+            "rate_limited": "Too many enquiries. Please wait before trying again.",
         }
         show_error(messages.get(result["status"], "The enquiry was not sent."))
         return 1

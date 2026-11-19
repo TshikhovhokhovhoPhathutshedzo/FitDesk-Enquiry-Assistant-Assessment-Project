@@ -1,5 +1,12 @@
 # RAPLH log
 
+### [GENUINE] 2026-11-19 — Add thread-safe enquiry rate limiting
+- Task/expectation: Add a separate, practical rate limiter for a small three-client workload and commit and push the verified changes.
+- Files changed: src/fitdesk/rate_limiter.py, src/fitdesk/cli.py, tests/conftest.py, tests/test_cli.py, tests/test_rate_limiter.py, README.md, docs/REGRESSION_TESTS.md.
+- Rate policy: 10 enquiries per client per rolling 60 seconds, and 30 total enquiries per rolling 60 seconds. Requests over either limit are logged as `rate_limited` without invoking Gemini.
+- Scope limitation: The limiter is thread-safe and in-memory within one Python process. The CLI currently uses the shared `local` client identity; an integration can pass an authenticated client ID to `process_enquiry`. Separate processes/hosts need shared storage for coordinated limits.
+- Test run and result: `.venv-validation\Scripts\python.exe -m pytest -q` completed with `42 passed in 5.35s`; `compileall` and targeted `git diff --check` succeeded.
+
 ### [GENUINE] 2026-11-19 — Restrict AI integration to Gemini and select Flash-Lite
 - Task/expectation: Use only the Gemini API key, ensure `.env.example` contains no real key, and select a cost-efficient model with a bounded response.
 - Files changed: .env.example, README.md, docs/PROJECT_REPORT.md, docs/REGRESSION_TESTS.md, docs/SRS.md, src/fitdesk/ai_client.py, src/fitdesk/config.py, src/fitdesk/gemini_client.py, tests/test_cli.py; removed DeepSeek/OpenRouter/Groq clients and tests.

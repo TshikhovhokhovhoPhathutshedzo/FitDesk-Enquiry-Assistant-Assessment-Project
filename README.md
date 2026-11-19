@@ -13,6 +13,10 @@ A Python command-line assistant that helps FitDesk staff prepare replies to cust
 5. Staff reviews the draft and enters `y` to approve or `n` to reject. This approval is always required.
 6. The outcome is recorded in `status_log.json`. Failed requests and rejected drafts are not recorded as sent.
 
+Enquiries are rate limited before any Gemini request: each client can submit up to 10 enquiries in a rolling 60-second window, with a shared application limit of 30 per 60 seconds. This supports three clients at 10 enquiries per minute each and prevents one client from using the whole allowance. A rejected request is logged as `rate_limited` and does not call Gemini.
+
+The current application is a command-line program and identifies its caller as `local`. Code integrating `process_enquiry` can supply a stable authenticated `client_id` to enforce separate client quotas. The limiter is thread-safe within one running process; separate processes or hosted instances do not share counters. A multi-worker web deployment would need a shared backing store such as Redis.
+
 ## Requirements
 
 - Python 3.10 or later
@@ -94,13 +98,15 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 │       ├── config.py
 │       ├── drafter.py
 │       ├── gemini_client.py
+│       ├── rate_limiter.py
 │       ├── lookup.py
 │       ├── models.py
 │       ├── status_log.py
 │       └── ui.py
 ├── tests/
 │   ├── conftest.py
-│   └── test_cli.py
+│   ├── test_cli.py
+│   └── test_rate_limiter.py
 ├── .env.example
 ├── .gitignore
 ├── pyproject.toml
@@ -120,6 +126,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 | `ai_client.py` | Provides the single Gemini analysis entry point and reports the non-secret provider/model values written to the status log. |
 | `gemini_client.py` | Sends Gemini requests using its structured JSON response schema and compact output limit, handles service errors, and validates returned analysis. |
 | `models.py` | Defines the allowed enquiry intents and the Pydantic `EnquiryAnalysis` model. Validation prevents unexpected AI output from flowing into later steps. |
+| `rate_limiter.py` | Applies thread-safe per-client and shared rolling-window request limits before Gemini is called. The current CLI uses one `local` client identity; hosted integrations should pass an authenticated client ID and use shared storage across multiple application processes. |
 | `lookup.py` | Loads and validates approved studio data, checks what the customer actually requested, and returns matching facts. This is the boundary that prevents the model from inventing or substituting prices and availability. |
 | `drafter.py` | Builds the reply from verified facts and adds the standard owner-check phrase when information is unknown. |
 | `approval.py` | Keeps the staff approval prompt in a focused module and handles cancellation and invalid responses. |
@@ -134,6 +141,7 @@ The tests mock Gemini calls, so they do not need an API key, internet access, or
 | `data/fitdesk_data.json` | The approved source of package prices and Saturday slot statuses. Change this file when the studio's confirmed facts change; replies should use these facts rather than model-generated claims. |
 | `tests/conftest.py` | Adds the `src` directory to the test import path and redirects status logs to a temporary directory, keeping tests isolated from real runtime data. |
 | `tests/test_cli.py` | Exercises the application workflow and Gemini request setup using mocked AI responses; tests do not make real API calls. |
+| `tests/test_rate_limiter.py` | Verifies per-client and shared rolling limits, expiry, and thread safety under concurrent requests. |
 | `docs/SRS.md` | Records the software requirements, scope, stakeholders, and acceptance criteria. |
 | `docs/REGRESSION_TESTS.md` | Describes the regression-test cases and previously recorded test evidence. |
 | `docs/RAPLH_LOG.md` | Keeps the project's work and bug-fix log. |
