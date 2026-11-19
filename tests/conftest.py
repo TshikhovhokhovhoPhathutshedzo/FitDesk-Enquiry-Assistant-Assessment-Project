@@ -20,5 +20,8 @@ def isolate_status_log(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def isolate_rate_limiter(monkeypatch):
-    monkeypatch.setattr("fitdesk.cli.RATE_LIMITER", RateLimiter())
+def isolate_rate_limiter(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "fitdesk.cli.RATE_LIMITER",
+        RateLimiter(database_path=tmp_path / "rate_limit.sqlite3"),
+    )

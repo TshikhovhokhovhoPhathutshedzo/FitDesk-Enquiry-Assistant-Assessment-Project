@@ -4,15 +4,15 @@
 
 **Project type:** Python command-line assessment/demo
 
-**Repository:** [FitDesk Enquiry Assistant](https://github.com/TshikhovhokhovhoPhathutshedzo/FitDesk-Enquiry-Assistant-Assessment-Project)
+**Repository:** [RAHN Assessment — FitDesk Enquiry Assistant](https://github.com/TshikhovhokhovhoPhathutshedzo/rahn-assessment-Phathutshedzo-Tshikhovhokhovho)
 
 ## 1. Executive summary
 
-FitDesk Enquiry Assistant accepts one customer enquiry, uses a selected AI provider to classify it, verifies requested prices and Saturday times against local approved data, drafts a response, asks staff to approve or reject it, and records the outcome.
+FitDesk Enquiry Assistant accepts one customer enquiry, uses Gemini to classify it, verifies requested prices and Saturday times against local approved data, drafts a response, asks staff to approve or reject it, and records the outcome.
 
 The AI is used to understand the message, not as the source of prices or availability. Code resolves facts from `data/fitdesk_data.json`; unsupported questions use the owner-check escalation phrase. Every draft remains behind a staff approval gate.
 
-The current application uses Gemini only. Its default model is `gemini-3.5-flash-lite`, Google's cost-efficient Flash-Lite option, and generated output is capped at 256 tokens. Earlier project iterations experimented with DeepSeek, OpenRouter, and Groq; those integrations have been removed. The historical status-log report below preserves those past experiments and should not be read as current provider support.
+The current application uses Gemini only. Its default model is `gemini-3.5-flash-lite`, Google's cost-efficient Flash-Lite option, and generated output is capped at 256 tokens. It also limits requests to 10 per client and 30 total per rolling 60 seconds using an SQLite-backed limiter shared across processes that use the same local database file. Earlier project iterations experimented with DeepSeek, OpenRouter, and Groq; those integrations have been removed. The historical status-log report below preserves those past experiments and should not be read as current provider support.
 
 ## 2. Scope and boundaries
 
@@ -25,6 +25,7 @@ The current application uses Gemini only. Its default model is `gemini-3.5-flash
 - Deterministic reply drafting and a fixed escalation phrase for unsupported facts.
 - Staff approval (`y`) or rejection (`n`) before a result can be recorded as sent.
 - Local status history with atomic updates and process locking.
+- A per-client and shared SQLite-backed sliding-window request limit before Gemini calls; processes must use the same local database file to share the counters.
 - Mocked offline regression tests for provider integrations and the application flow.
 
 ### Not included
@@ -40,24 +41,29 @@ The current application uses Gemini only. Its default model is `gemini-3.5-flash
 
 1. `src/fitdesk/__main__.py` starts the command-line interface.
 2. `src/fitdesk/cli.py` accepts the enquiry and coordinates the workflow.
-3. `src/fitdesk/ai_client.py` calls the Gemini integration.
-4. Gemini returns a classification which is validated against `src/fitdesk/models.py`.
-5. `src/fitdesk/lookup.py` checks the customer's actual request against `data/fitdesk_data.json`; model-suggested facts alone are not trusted.
-6. `src/fitdesk/drafter.py` builds the reply from approved facts and escalates unknown information.
-7. `src/fitdesk/approval.py` requires staff to approve or reject the draft.
-8. `src/fitdesk/status_log.py` records the outcome in the local, Git-ignored `status_log.json`.
+3. `src/fitdesk/rate_limiter.py` checks the client and shared request budgets before any AI call.
+4. `src/fitdesk/ai_client.py` calls the Gemini integration.
+5. Gemini returns a classification which is validated against `src/fitdesk/models.py`.
+6. `src/fitdesk/lookup.py` checks the customer's actual request against `data/fitdesk_data.json`; model-suggested facts alone are not trusted.
+7. `src/fitdesk/drafter.py` builds the reply from approved facts and escalates unknown information.
+8. `src/fitdesk/approval.py` requires staff to approve or reject the draft.
+9. `src/fitdesk/status_log.py` records the outcome in the local, Git-ignored `status_log.json`.
 
 `src/fitdesk/gemini_client.py` uses Gemini's SDK-specific structured-output integration. The app does not load or call other AI providers.
 
 ## 4. Provider and model configuration
 
-The app reads the Gemini key and optional model from `.env`:
+The app reads the Gemini key, optional model, and client identifier from `.env`:
 
 | Provider | Environment variables | Default model in project configuration |
 |---|---|---|
 | Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | `gemini-3.5-flash-lite` |
 
+`FITDESK_CLIENT_ID` identifies a user's rate-limit bucket; it is not an authentication mechanism.
+
 Google describes Gemini 3.5 Flash-Lite as optimized for cost-efficient, high-throughput execution. The request caps output at 256 tokens. These measures limit response size and use a cost-efficient model; they do not guarantee a particular bill or free-tier allowance. The key is intentionally never written to the status log or committed to the repository.
+
+The rate limiter permits up to 10 requests per client and 30 total requests in any rolling 60-second window. SQLite transactions coordinate checks across processes on the same machine that share the same database file. Separate machines or hosted instances need a shared database/service to enforce a common limit.
 
 ## 5. Status-log findings
 
@@ -133,7 +139,7 @@ Run the offline suite from the repository root:
 python -m pytest -v
 ```
 
-The latest verified Gemini-only automated run was **37 passed in 4.90 seconds**. Separately, a live request using `gemini-3.5-flash-lite` successfully classified an enquiry and generated a draft. The staff rejection path was selected, and the status log recorded `rejected_by_staff`, provider `gemini`, and model `gemini-3.5-flash-lite`; nothing was sent. The automated suite uses mocked Gemini calls, so it does not need API credentials or make network calls. It covers:
+The latest verified automated run was **45 passed in 14.41 seconds**. Separately, a live request using `gemini-3.5-flash-lite` successfully classified an enquiry and generated a draft. The staff rejection path was selected, and the status log recorded `rejected_by_staff`, provider `gemini`, and model `gemini-3.5-flash-lite`; nothing was sent. The automated suite uses mocked Gemini calls, so it does not need API credentials or make network calls. It covers:
 
 - Gemini structured schema, compact 256-token output budget, timeout settings, and malformed/service responses.
 - Gemini model metadata on successful and failed enquiry records.

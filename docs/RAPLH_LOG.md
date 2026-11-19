@@ -1,14 +1,25 @@
 # RAPLH log
 
+### [GENUINE] 2026-11-19 — Share rate limits across concurrent CLI processes
+- Task/expectation: During the assignment compliance review, make the three-client rate limit effective across separate application processes instead of only within one process.
+- Prompt summary: “Review the project against the assessment brief, close the gaps, then commit everything and push to the renamed repository.”
+- Files changed: src/fitdesk/rate_limiter.py, src/fitdesk/config.py, src/fitdesk/cli.py, .env.example, .gitignore, tests/conftest.py, tests/test_rate_limiter.py, README.md, docs/SRS.md, docs/PROJECT_REPORT.md, docs/REGRESSION_TESTS.md.
+- What was corrected: Replaced the process-local counter with a transaction-serialized SQLite store; added configurable per-client IDs and explicit fail-closed handling if the store cannot be checked.
+- Test run and result: `.venv-validation\Scripts\python.exe -m pytest -q` completed with `45 passed in 14.41s`; `compileall` and `git diff --check` succeeded.
+- Approval decision: Reviewed the tests and project diff; ready for commit and push. The author supplied 3.5 hours and answers to questions 2–4, which were copied verbatim. Question 1 was counted at 74 words; the author was asked to extend it to the required 80–150 words, but no additional text was supplied, so its placeholder remains rather than inventing a personal answer.
+
 ### [GENUINE] 2026-11-19 — Add thread-safe enquiry rate limiting
 - Task/expectation: Add a separate, practical rate limiter for a small three-client workload and commit and push the verified changes.
+- Prompt summary: “Place a proper rate limiter for the chatbot on a different file, set a realistic limit for three simultaneous users, then commit and push.”
 - Files changed: src/fitdesk/rate_limiter.py, src/fitdesk/cli.py, tests/conftest.py, tests/test_cli.py, tests/test_rate_limiter.py, README.md, docs/REGRESSION_TESTS.md.
 - Rate policy: 10 enquiries per client per rolling 60 seconds, and 30 total enquiries per rolling 60 seconds. Requests over either limit are logged as `rate_limited` without invoking Gemini.
 - Scope limitation: The limiter is thread-safe and in-memory within one Python process. The CLI currently uses the shared `local` client identity; an integration can pass an authenticated client ID to `process_enquiry`. Separate processes/hosts need shared storage for coordinated limits.
 - Test run and result: `.venv-validation\Scripts\python.exe -m pytest -q` completed with `42 passed in 5.35s`; `compileall` and targeted `git diff --check` succeeded.
+- Approval decision: Reviewed the diff and test evidence before committing and pushing; preserved an unrelated environment-template edit rather than including it in that change.
 
 ### [GENUINE] 2026-11-19 — Restrict AI integration to Gemini and select Flash-Lite
 - Task/expectation: Use only the Gemini API key, ensure `.env.example` contains no real key, and select a cost-efficient model with a bounded response.
+- Prompt summary: “Use only the Gemini key, select the model that does not consume too many tokens, then commit and push.”
 - Files changed: .env.example, README.md, docs/PROJECT_REPORT.md, docs/REGRESSION_TESTS.md, docs/SRS.md, src/fitdesk/ai_client.py, src/fitdesk/config.py, src/fitdesk/gemini_client.py, tests/test_cli.py; removed DeepSeek/OpenRouter/Groq clients and tests.
 - Test run and result: `.venv-validation\Scripts\python.exe -m pytest -q` completed with `37 passed in 4.90s`; `compileall` and `git diff --check` succeeded.
 - What was corrected: Removed non-Gemini routing/configuration, changed the default model to `gemini-3.5-flash-lite`, capped generated output at 256 tokens, and kept `GEMINI_API_KEY` blank in `.env.example`. The local `.env` model setting was updated without displaying or changing the Gemini credential.
@@ -74,4 +85,4 @@
 
 2. How would you stop the loop if the agent keeps repeating the same failed fix?
    - Stop after the third attempt on the same root cause, document the output and hypothesis, and ask for human guidance.
-   - The workflow here uses a max 3-attempt rule, human review gate, and explicit test evidence before continuing.
+   - Do not repeat the same change without new evidence. Compare the latest failure with earlier attempts, keep the relevant error and test output, and revise the diagnosis or choose a simpler approach. If progress still depends on an assumption, pause for human review rather than making more speculative edits.

@@ -1,10 +1,14 @@
-"""Thread-safe sliding-window limits for Gemini-backed enquiries."""
+"""SQLite-backed sliding-window limits shared by concurrent processes."""
 
-from collections import deque
+import sqlite3
 from math import ceil
-from threading import Lock
-from time import monotonic
+from pathlib import Path
+from time import time
 from typing import Callable
+
+from .config import BASE_DIR
+
+RATE_LIMIT_DB = BASE_DIR / ".rate_limit.sqlite3"
 
 
 class RateLimitExceeded(Exception):
@@ -18,6 +22,10 @@ class RateLimitExceeded(Exception):
         )
 
 
+class RateLimiterUnavailable(RuntimeError):
+    """Raised when the shared rate-limit store cannot safely check a request."""
+
+
 class RateLimiter:
     """Apply per-client and shared rolling-window request limits."""
 
@@ -26,17 +34,16 @@ class RateLimiter:
         per_client_limit: int = 10,
         total_limit: int = 30,
         window_seconds: float = 60,
-        clock: Callable[[], float] = monotonic,
+        database_path: str | Path = RATE_LIMIT_DB,
+        clock: Callable[[], float] = time,
     ):
         if per_client_limit < 1 or total_limit < 1 or window_seconds <= 0:
             raise ValueError("Rate limits and the time window must be positive.")
         self._per_client_limit = per_client_limit
         self._total_limit = total_limit
         self._window_seconds = window_seconds
+        self._database_path = Path(database_path)
         self._clock = clock
-        self._client_requests: dict[str, deque[float]] = {}
-        self._all_requests: deque[float] = deque()
-        self._lock = Lock()
 
     def check(self, client_id: str) -> None:
         """Record an allowed request or raise with its earliest retry time."""
@@ -47,32 +54,79 @@ class RateLimiter:
         now = self._clock()
         cutoff = now - self._window_seconds
 
-        with self._lock:
-            self._discard_expired(self._all_requests, cutoff)
-            for known_client, requests in list(self._client_requests.items()):
-                self._discard_expired(requests, cutoff)
-                if not requests:
-                    del self._client_requests[known_client]
+        try:
+            with sqlite3.connect(self._database_path, timeout=10) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS rate_limit_requests (
+                        id INTEGER PRIMARY KEY,
+                        client_id TEXT NOT NULL,
+                        requested_at REAL NOT NULL
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS rate_limit_requests_by_client_time
+                    ON rate_limit_requests (client_id, requested_at)
+                    """
+                )
+                connection.execute(
+                    "DELETE FROM rate_limit_requests WHERE requested_at <= ?",
+                    (cutoff,),
+                )
+                client_count = connection.execute(
+                    "SELECT COUNT(*) FROM rate_limit_requests WHERE client_id = ?",
+                    (client_id,),
+                ).fetchone()[0]
+                total_count = connection.execute(
+                    "SELECT COUNT(*) FROM rate_limit_requests"
+                ).fetchone()[0]
 
-            client_requests = self._client_requests.get(client_id, deque())
-            retry_times = []
-            if len(client_requests) >= self._per_client_limit:
-                retry_times.append(client_requests[0] + self._window_seconds)
-            if len(self._all_requests) >= self._total_limit:
-                retry_times.append(self._all_requests[0] + self._window_seconds)
+                retry_times = []
+                if client_count >= self._per_client_limit:
+                    retry_times.append(
+                        connection.execute(
+                            """
+                            SELECT requested_at FROM rate_limit_requests
+                            WHERE client_id = ?
+                            ORDER BY requested_at
+                            LIMIT 1
+                            """,
+                            (client_id,),
+                        ).fetchone()[0]
+                        + self._window_seconds
+                    )
+                if total_count >= self._total_limit:
+                    retry_times.append(
+                        connection.execute(
+                            """
+                            SELECT requested_at FROM rate_limit_requests
+                            ORDER BY requested_at
+                            LIMIT 1
+                            """
+                        ).fetchone()[0]
+                        + self._window_seconds
+                    )
 
-            if retry_times:
-                retry_after = max(1, ceil(max(retry_times) - now))
-                raise RateLimitExceeded(retry_after)
+                if retry_times:
+                    retry_after = max(1, ceil(max(retry_times) - now))
+                    raise RateLimitExceeded(retry_after)
 
-            client_requests = self._client_requests.setdefault(client_id, client_requests)
-            client_requests.append(now)
-            self._all_requests.append(now)
-
-    @staticmethod
-    def _discard_expired(requests: deque[float], cutoff: float) -> None:
-        while requests and requests[0] <= cutoff:
-            requests.popleft()
+                connection.execute(
+                    """
+                    INSERT INTO rate_limit_requests (client_id, requested_at)
+                    VALUES (?, ?)
+                    """,
+                    (client_id, now),
+                )
+        except RateLimitExceeded:
+            raise
+        except sqlite3.Error as exc:
+            raise RateLimiterUnavailable(
+                "Could not check the enquiry rate limit; the request was not sent."
+            ) from exc
 
 
 RATE_LIMITER = RateLimiter()

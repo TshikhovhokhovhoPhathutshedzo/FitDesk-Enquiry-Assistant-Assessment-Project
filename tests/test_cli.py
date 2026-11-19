@@ -349,6 +349,26 @@ def test_rate_limited_enquiry_is_logged_without_calling_ai(monkeypatch):
     assert status_log.read_log()[1]["status"] == "rate_limited"
 
 
+def test_unavailable_rate_limit_store_fails_closed_before_ai(monkeypatch, tmp_path):
+    from fitdesk.rate_limiter import RateLimiter
+
+    monkeypatch.setattr(
+        "fitdesk.cli.RATE_LIMITER",
+        RateLimiter(database_path=tmp_path / "missing" / "rate_limit.sqlite3"),
+    )
+    ai_calls = []
+    monkeypatch.setattr(
+        "fitdesk.cli.analyze_enquiry",
+        lambda message: ai_calls.append(message) or _analysis(),
+    )
+
+    result = process_enquiry("customer enquiry", lambda: "y")
+
+    assert result["status"] == "failed_rate_limiter"
+    assert ai_calls == []
+    assert status_log.read_log()[0]["status"] == "failed_rate_limiter"
+
+
 def test_approved_result_records_provider_and_model(monkeypatch):
     monkeypatch.setattr("fitdesk.cli.analyze_enquiry", lambda message: _analysis())
     monkeypatch.setattr(

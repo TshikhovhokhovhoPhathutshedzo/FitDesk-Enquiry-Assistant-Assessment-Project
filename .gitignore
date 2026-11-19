@@ -5,4 +5,7 @@ __pycache__/
 .pytest_cache/
 status_log.json
 status_log.json.lock
+.rate_limit.sqlite3
+.rate_limit.sqlite3-shm
+.rate_limit.sqlite3-wal
 src/*.egg-info/
