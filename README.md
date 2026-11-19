@@ -21,6 +21,10 @@ Every chat turn is rate limited: each client can submit up to 10 messages in a r
 
 By default, the command-line app identifies its caller as `local`. To enforce per-client quotas for three users, configure a distinct `FITDESK_CLIENT_ID` for each user. This is an identifier, not authentication. Processes must use the same local database file to share the total cap; separate machines or hosted instances need a shared service/database.
 
+## Structured AI output
+
+Gemini classification requests use the API's structured JSON output mode with a schema for `is_fitdesk_related`, `intent`, `details`, `packages`, `saturday_times`, and `requires_human_approval`. The returned JSON is validated against the `EnquiryAnalysis` model before the application uses it; empty, malformed, or schema-invalid output fails closed and is logged as a failure. The schema regression test checks the request configuration and required fields. Deterministic greeting, price, and Saturday-availability replies are built locally from approved data and do not call Gemini.
+
 ## Requirements
 
 - Python 3.10 or later
